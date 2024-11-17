@@ -38,7 +38,7 @@ class FractalHandlerNetworkX:
         if save_animated_as:
             animation_data = []
             pos = nx.spring_layout(self.network, dim=3)  # 3D layout
-            
+
             # Create a color mapping based on z-coordinates
             z_coords = np.array([pos[node][2] for node in self.network.nodes()])
             z_min, z_max = z_coords.min(), z_coords.max()
