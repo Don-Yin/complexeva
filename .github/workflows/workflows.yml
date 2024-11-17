@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/donware
+      url: https://pypi.org/p/complexeva
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     
