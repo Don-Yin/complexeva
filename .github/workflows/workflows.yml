@@ -14,7 +14,7 @@ jobs:
   build:
     # -------- https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs
     name: Build distribution 📦
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       # -------- https://github.com/actions/checkout
@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.12.0"
+          python-version: "3.11.0"
 
       # --------
       - name: Install dependencies
@@ -76,7 +76,7 @@ jobs:
     name: Publish Python 🐍 distribution 📦 to PyPI
     needs:
     - build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     environment:
       name: pypi
       url: https://pypi.org/p/complexeva
