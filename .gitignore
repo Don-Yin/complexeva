@@ -1,0 +1,8 @@
+build
+complexeva.egg-info
+_dev**
+**.sh
+
+__pycache__
+.DS_Store
+**test.py
