@@ -1,16 +1,20 @@
 #!/Users/donyin/miniconda3/envs/rotation-1/bin/python
 
+"""
+- validating measures of complexity is actually working using synthetic data on various Hurst exponents
+"""
 
 import numpy
 from scipy.fft import fft, ifft
 import matplotlib.pyplot as plt
 from donware import inspect_package
-from complexeva.measures.higuchi import hfd_pyeeg, hfd_matlab_equivalent
+from complexeva.measures.dimension_1.higuchi import hfd_pyeeg, hfd_matlab_equivalent
+from complexeva.measures.dimension_1.lempel_ziv import lempel_ziv_v1, lempel_ziv_v2, lempel_ziv, lempel_ziv_v4
 
 
-class HiguchiMethodValidate:
-    def __init__(self, funcs, k_max: int, timeseries_len=1000, num_hurst=200):
-        self.funcs, self.k_max, self.num_hurst, self.timeseries_len = funcs, k_max, num_hurst, timeseries_len
+class ComplexityMeasuresValidator2D:
+    def __init__(self, funcs, timeseries_len=1000, num_hurst=200):
+        self.funcs, self.num_hurst, self.timeseries_len = funcs, num_hurst, timeseries_len
 
     def fbm(self, hurst):
         """
@@ -52,7 +56,7 @@ class HiguchiMethodValidate:
         hfd_results = []
 
         for func in self.funcs:
-            hfd_results.append([func(series, self.k_max) for series in fBm_series])
+            hfd_results.append([func(series) for series in fBm_series])
 
         # ---- plotting ----
         fig, axs = plt.subplots(3, 1, figsize=(9, 10))
@@ -91,6 +95,8 @@ class HiguchiMethodValidate:
 
 
 if __name__ == "__main__":
-    k_max = 30
-    validator = HiguchiMethodValidate([hfd_pyeeg, hfd_matlab_equivalent], k_max)
+    validator = ComplexityMeasuresValidator2D([hfd_pyeeg, hfd_matlab_equivalent])
+    validator.plot_hfd_vs_hurst()
+
+    validator = ComplexityMeasuresValidator2D([lempel_ziv_v1, lempel_ziv_v2, lempel_ziv, lempel_ziv_v4])
     validator.plot_hfd_vs_hurst()

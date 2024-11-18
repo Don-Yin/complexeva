@@ -8,7 +8,7 @@ from donware import inspect_package
 from numba import njit
 
 
-def hfd_matlab_equivalent(data, k_max):
+def hfd_matlab_equivalent(data, k_max=16):
     """
     [translated from MATLAB code]
 
@@ -37,7 +37,7 @@ def hfd_matlab_equivalent(data, k_max):
 
 
 @njit
-def compute_L_x(X, k_max):
+def compute_L_x(X, k_max=16):
     N = len(X)
     L = numpy.zeros(k_max)
     x = numpy.zeros(k_max)
@@ -55,14 +55,14 @@ def compute_L_x(X, k_max):
     return x, L
 
 
-def hfd_pyeeg(X, k_max):
+def hfd_pyeeg(X, k_max=16):
     x, L = compute_L_x(X, k_max)
     A = numpy.column_stack((x, numpy.ones_like(x)))
     beta, _, _, _ = numpy.linalg.lstsq(A, L, rcond=None)
     return beta[0]
 
 
-def _hfd_pyeeg(X, k_max):
+def _hfd_pyeeg(X, k_max=16):
     """
     [from PyEEG package]
     Higuchi Fractal Dimension of a time series X. kmax is an HFD parameter
