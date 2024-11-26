@@ -40,5 +40,4 @@ def lyapunov_exponent(data, tau=1, m=2, dt=1):
     positive_div = div[div > 0]  # Avoid log(0)
     if len(positive_div) == 0:
         return 0.0
-
-    return np.mean(np.log(positive_div)) / dt
+    return -np.mean(np.log(positive_div)) / dt
