@@ -78,20 +78,35 @@ class ComplexityMeasuresValidator2D:
         plt.tight_layout()
         plt.savefig("fBm_series_examples.png", dpi=320, bbox_inches="tight")
 
+        # Create figure with two subplots side by side
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
+
         # Original HFD vs Hurst plot
-        plt.figure(figsize=(9, 7))
-        plt.plot(hurst_exponent, expected_hfd, label="Expected HFD")
+        ax1.plot(hurst_exponent, expected_hfd, label="Expected FD")
         for i, func in enumerate(self.funcs):
-            plt.plot(hurst_exponent, hfd_results[i], label=f"HFD ({func.__name__})")
-        plt.xlabel("Hurst Exponent (H)", fontsize=14)
-        plt.ylabel("Higuchi Fractal Dimension (HFD)", fontsize=14)
-        plt.title(f"HFD vs Hurst Exponent ({len(hurst_exponent)} points)", fontsize=16)
+            ax1.plot(hurst_exponent, hfd_results[i], label=f"HFD ({func.__name__})")
+        ax1.set_xlabel("Hurst Exponent (H)", fontsize=14)
+        ax1.set_ylabel("Raw Complexity", fontsize=14)
+        ax1.set_title("Before Normalization", fontsize=16)
+        ax1.grid(True)
+        ax1.tick_params(axis="both", labelsize=12)
+        ax1.legend(fontsize=12)
+
+        # Normalized HFD vs Hurst plot
+        ax2.plot(hurst_exponent, expected_hfd, label="Expected FD")
+        for i, func in enumerate(self.funcs):
+            # Normalize results between 0 and 1
+            normalized_results = (hfd_results[i] - numpy.min(hfd_results[i])) / (numpy.max(hfd_results[i]) - numpy.min(hfd_results[i]))
+            ax2.plot(hurst_exponent, normalized_results, label=f"HFD ({func.__name__})")
+        ax2.set_xlabel("Hurst Exponent (H)", fontsize=14)
+        ax2.set_ylabel("Normalized Complexity", fontsize=14)
+        ax2.set_title("After Normalization (0-1)", fontsize=16)
+        ax2.grid(True)
+        ax2.tick_params(axis="both", labelsize=12)
+        ax2.legend(fontsize=12)
+
         plt.tight_layout()
-        plt.grid(True)
-        plt.xticks(fontsize=21)
-        plt.yticks(fontsize=21)
-        plt.legend(fontsize=21, bbox_to_anchor=(1.05, 1), loc="upper left")
-        plt.savefig("hfd_vs_hurst.png", dpi=320, bbox_inches="tight")
+        plt.savefig("hfd_vs_hurst_comparison.png", dpi=320, bbox_inches="tight")
 
 
 if __name__ == "__main__":
