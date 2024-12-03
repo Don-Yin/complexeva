@@ -47,7 +47,7 @@ def compute_L_x(X, k_max=16):
             Lmk = 0.0
             n_max = (N - m) // k
             for i in range(1, n_max):
-                Lmk += abs(X[m + i * k] - X[m + (i - 1) * k])
+                Lmk += numpy.abs(X[m + i * k] - X[m + (i - 1) * k])
             Lmk *= (N - 1) / (n_max * k)
             Lk[m] = Lmk
         L[k - 1] = numpy.log(Lk.mean())
