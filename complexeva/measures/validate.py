@@ -96,7 +96,9 @@ class ComplexityMeasuresValidator2D:
         ax2.plot(hurst_exponent, expected_hfd, label="Expected FD")
         for i, func in enumerate(self.funcs):
             # Normalize results between 0 and 1
-            normalized_results = (hfd_results[i] - numpy.min(hfd_results[i])) / (numpy.max(hfd_results[i]) - numpy.min(hfd_results[i]))
+            normalized_results = (hfd_results[i] - numpy.min(hfd_results[i])) / (
+                numpy.max(hfd_results[i]) - numpy.min(hfd_results[i])
+            )
             ax2.plot(hurst_exponent, normalized_results, label=f"HFD ({func.__name__})")
         ax2.set_xlabel("Hurst Exponent (H)", fontsize=14)
         ax2.set_ylabel("Normalized Complexity", fontsize=14)
