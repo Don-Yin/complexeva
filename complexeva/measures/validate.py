@@ -8,7 +8,7 @@ import numpy
 from scipy.fft import fft, ifft
 import matplotlib.pyplot as plt
 from donware import inspect_package
-from complexeva.measures.dimension_1.higuchi import hfd_pyeeg, hfd_matlab_equivalent
+from complexeva.measures.dimension_1.higuchi import hfd
 from complexeva.measures.dimension_1.lempel_ziv import lempel_ziv_v1, lempel_ziv_v2, lempel_ziv, lempel_ziv_v4
 
 
@@ -96,9 +96,7 @@ class ComplexityMeasuresValidator2D:
         ax2.plot(hurst_exponent, expected_hfd, label="Expected FD")
         for i, func in enumerate(self.funcs):
             # Normalize results between 0 and 1
-            normalized_results = (hfd_results[i] - numpy.min(hfd_results[i])) / (
-                numpy.max(hfd_results[i]) - numpy.min(hfd_results[i])
-            )
+            normalized_results = (hfd_results[i] - numpy.min(hfd_results[i])) / (numpy.max(hfd_results[i]) - numpy.min(hfd_results[i]))
             ax2.plot(hurst_exponent, normalized_results, label=f"HFD ({func.__name__})")
         ax2.set_xlabel("Hurst Exponent (H)", fontsize=14)
         ax2.set_ylabel("Normalized Complexity", fontsize=14)
@@ -112,7 +110,7 @@ class ComplexityMeasuresValidator2D:
 
 
 if __name__ == "__main__":
-    validator = ComplexityMeasuresValidator2D([hfd_pyeeg, hfd_matlab_equivalent])
+    validator = ComplexityMeasuresValidator2D([hfd])
     validator.plot_hfd_vs_hurst()
 
     validator = ComplexityMeasuresValidator2D([lempel_ziv_v1, lempel_ziv_v2, lempel_ziv, lempel_ziv_v4])

@@ -55,37 +55,8 @@ def compute_L_x(X, k_max=16):
     return x, L
 
 
-def hfd_pyeeg(X, k_max=16):
+def hfd(X, k_max=16):
     x, L = compute_L_x(X, k_max)
     A = numpy.column_stack((x, numpy.ones_like(x)))
     beta, _, _, _ = numpy.linalg.lstsq(A, L, rcond=None)
     return beta[0]
-
-
-def _hfd_pyeeg(X, k_max=16):
-    """
-    [from PyEEG package]
-    Higuchi Fractal Dimension of a time series X. kmax is an HFD parameter
-
-    [output]
-    - for some reasons produce values between 0 and 1
-
-    [modifications]
-    - kmax should be inclusive, Kmax + 1
-    """
-    L = []
-    x = []
-    N = len(X)
-    for k in range(1, k_max + 1):
-        Lk = []
-        for m in range(0, k):
-            Lmk = 0
-            for i in range(1, int(numpy.floor((N - m) / k))):
-                Lmk += abs(X[m + i * k] - X[m + i * k - k])
-            Lmk = Lmk * (N - 1) / numpy.floor((N - m) / float(k)) / k
-            Lk.append(Lmk)
-        L.append(numpy.log(numpy.mean(Lk)))
-        x.append([numpy.log(float(1) / k), 1])
-
-    (p, _, _, _) = numpy.linalg.lstsq(x, L, rcond=None)
-    return p[0]
