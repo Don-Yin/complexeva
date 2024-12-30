@@ -3,7 +3,7 @@
 import numpy
 
 
-def lempel_ziv(time_series, method="median"):
+def lempel_ziv(time_series, method="median", **kwargs):
     """
     - compared to other implementations, this implementation is makes the most sense
 
@@ -64,9 +64,7 @@ def time_series_to_binary(vector, method="median"):
         threshold = numpy.median(vector)
         binary_seq = "".join(["1" if x > threshold else "0" for x in vector])
     elif method == "diff":
-        diffs = numpy.diff(
-            vector
-        )  # this measures whether the value is increasing or decreasing as compared to the previous value
+        diffs = numpy.diff(vector)  # this measures whether the value is increasing or decreasing as compared to the previous value
         binary_seq = "".join(["1" if x > 0 else "0" for x in diffs])
     else:
         raise ValueError("Method must be 'mean', 'median', or 'diff'.")
