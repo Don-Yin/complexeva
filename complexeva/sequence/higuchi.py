@@ -2,38 +2,7 @@
 
 
 import numpy
-from scipy.fft import fft, ifft
-import matplotlib.pyplot as plt
-from donware import inspect_package
 from numba import njit
-
-
-def hfd_matlab_equivalent(data, k_max=16):
-    """
-    [translated from MATLAB code]
-
-    [output]
-    - produce values between 1 and 2
-    """
-    N = len(data)
-    L = numpy.zeros(k_max)
-    x = numpy.zeros(k_max)
-    y = numpy.zeros(k_max)
-
-    for k in range(1, k_max + 1):
-        Lk = numpy.zeros(k)
-        for m in range(1, k + 1):
-            norm_factor = (N - 1) / (numpy.round((N - m) / k) * k)
-            X = numpy.sum(numpy.abs(numpy.diff(data[m - 1 :: k])))
-            Lk[m - 1] = X * norm_factor / k
-
-        y[k - 1] = numpy.log(numpy.sum(Lk) / k)
-        x[k - 1] = numpy.log(1 / k)
-
-    D = numpy.polyfit(x, y, 1)
-    HFD = D[0]
-
-    return HFD
 
 
 @njit
@@ -56,7 +25,13 @@ def compute_L_x(X, k_max=16):
 
 
 def hfd(X, k_max=16):
+    """expect a 1d numpy array as input"""
     x, L = compute_L_x(X, k_max)
     A = numpy.column_stack((x, numpy.ones_like(x)))
     beta, _, _, _ = numpy.linalg.lstsq(A, L, rcond=None)
     return beta[0]
+
+
+if __name__ == "__main__":
+    signal = numpy.random.rand(1000)  # shape: (1000,)
+    print(hfd(signal))

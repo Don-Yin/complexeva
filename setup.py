@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="complexeva",
-    version="0.1.16",
+    version="0.2.0",
     packages=find_packages(),
     install_requires=[],
     author="Don Yin",
@@ -11,5 +11,5 @@ setup(
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     url="",
-    pyhon_requires=">=3.11",
+    pyhon_requires=">=3.12",
 )
