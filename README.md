@@ -1,8 +1,11 @@
 # overview
-computing fractal dimensions (and other complexity measures) and complexity measures in networks and matrices. The package includes:
+implementations of complexity measures in 1D sequences
 
-# some functions (thus far)
-- Box-counting fractal dimension calculation for networks and matrices
-- Higuchi fractal dimension implementation
-- Network-to-matrix and image-to-matrix conversions
-- Dummy fractal generators for testing
+# examples
+```python
+from complexeva import lyapunov_exponent, hfd, lempel_ziv, compression_complexity
+
+signal = numpy.random.rand(1000)  # shape: (1000,)
+complexity = hfd(signal)
+print(complexity)
+```

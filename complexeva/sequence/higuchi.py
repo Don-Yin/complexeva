@@ -34,4 +34,5 @@ def hfd(X, k_max=16):
 
 if __name__ == "__main__":
     signal = numpy.random.rand(1000)  # shape: (1000,)
-    print(hfd(signal))
+    complexity = hfd(signal)
+    print(complexity)
