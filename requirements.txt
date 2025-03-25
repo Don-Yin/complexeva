@@ -1,8 +1,6 @@
 pandas
 matplotlib
 seaborn
-monai-weekly
 itk
 nibabel
-donware
 numba

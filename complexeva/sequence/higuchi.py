@@ -26,6 +26,7 @@ def compute_L_x(X, k_max=16):
 
 def hfd(X, k_max=16):
     """expect a 1d numpy array as input"""
+    assert X.ndim == 1, f"X must be a 1d numpy array, got shape {X.shape}"
     x, L = compute_L_x(X, k_max)
     A = numpy.column_stack((x, numpy.ones_like(x)))
     beta, _, _, _ = numpy.linalg.lstsq(A, L, rcond=None)
