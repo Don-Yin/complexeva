@@ -14,7 +14,7 @@ jobs:
   build:
     # -------- https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs
     name: Build distribution 📦
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
       # -------- https://github.com/actions/checkout
@@ -76,7 +76,7 @@ jobs:
     name: Publish Python 🐍 distribution 📦 to PyPI
     needs:
     - build
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     environment:
       name: pypi
       url: https://pypi.org/p/complexeva
