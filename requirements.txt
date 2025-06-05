@@ -4,3 +4,4 @@ seaborn
 itk
 nibabel
 numba
+scipy
