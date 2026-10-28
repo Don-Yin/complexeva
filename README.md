@@ -37,6 +37,36 @@ complexeva.lyapunov_exponent(x)            # largest Lyapunov exponent
 
 All functions take a 1D array. Results changed in 0.3.0; see [CHANGELOG.md](CHANGELOG.md).
 
+## synthetic-data checks
+
+For fractional Brownian motion (fBm), the theoretical graph dimension is
+**D = 2 − H**. HFD tracks this relation without rescaling its output. Each point
+below uses 32 independently sampled paths of 8,192 samples, with `k_max=10`;
+error bars show ±1 standard deviation across paths, not a confidence interval.
+The paths use circulant embedding of fractional Gaussian noise, followed by a
+cumulative sum.
+
+![Higuchi fractal dimension follows the theoretical fBm dimension from 1.9 to 1.1 as the Hurst exponent increases.](docs/figures/hfd-fbm.png)
+
+With the same sample length and median binarization, normalized Lempel–Ziv
+complexity is low for a periodic sine wave and close to 1 for Gaussian white
+noise. The noise bar summarizes 32 trials; the sine wave has period 128 samples.
+The dashed line is the asymptotic random-sequence limit, not an upper bound.
+These are finite-sample sanity checks, not guarantees for every signal or parameter.
+
+![Normalized Lempel–Ziv complexity is low for a sine wave and near one for white noise, with signal excerpts alongside.](docs/figures/lz-sine-noise.png)
+
+Regenerate both figures from a repository checkout (fixed RNG seed 0):
+
+```bash
+python -m pip install -e . matplotlib
+python examples/validate.py
+```
+
+The script writes small, headless PNGs to `docs/figures/`; use `--output-dir PATH`
+to write them elsewhere. Matplotlib is only needed for these plots, not to use
+the package.
+
 ## licence
 
 MIT
