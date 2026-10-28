@@ -1,4 +1,5 @@
 build
+dist
 complexeva.egg-info
 _dev**
 **.sh

@@ -1,13 +1,12 @@
-#!/Users/donyin/miniconda3/envs/rotation-1/bin/python
-
 """
 - validating measures of complexity is actually working using synthetic data on various Hurst exponents
+- needs matplotlib, which is not a package dependency
 """
 
-import numpy
 import matplotlib.pyplot as plt
-from complexeva.sequence.higuchi import hfd
-from complexeva.sequence.lempel_ziv import lempel_ziv
+import numpy
+
+from complexeva import hfd, lempel_ziv
 
 
 class ComplexityMeasuresValidator2D:
@@ -57,7 +56,7 @@ class ComplexityMeasuresValidator2D:
             hfd_results.append([func(series) for series in fBm_series])
 
         # ---- plotting ----
-        fig, axs = plt.subplots(3, 1, figsize=(9, 10))
+        _, axs = plt.subplots(3, 1, figsize=(9, 10))
 
         axs[0].plot(fBm_series[0])
         axs[0].set_title(f"fBm series with H = {hurst_exponent[0]:.3f}", fontsize=21)
@@ -77,7 +76,7 @@ class ComplexityMeasuresValidator2D:
         plt.savefig("fBm_series_examples.png", dpi=320, bbox_inches="tight")
 
         # Create figure with two subplots side by side
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
+        _, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
 
         # Original HFD vs Hurst plot
         ax1.plot(hurst_exponent, expected_hfd, label="Expected FD")

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "complexeva"
+version = "0.3.0"
+description = "Complexity measures for 1D time series: Higuchi fractal dimension, Lempel-Ziv, compression, Lyapunov exponent"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Don Yin", email = "don_yin@outlook.com" }]
+requires-python = ">=3.14"
+dependencies = ["numpy", "scipy", "numba"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/Don-Yin/complexeva"
+Changelog = "https://github.com/Don-Yin/complexeva/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.sdist]
+include = ["/complexeva", "/tests", "/README.md", "/CHANGELOG.md", "/LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 128

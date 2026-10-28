@@ -1,93 +1,62 @@
-name: Python CI/CD
+# file name must stay workflow.yml: the PyPI trusted publisher is registered for it
+name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
-permissions: write-all
+permissions:
+  contents: read
 
 jobs:
-  build:
-    # -------- https://docs.github.com/en/actions/using-jobs/using-a-matrix-for-your-jobs
-    name: Build distribution 📦
-    runs-on: ubuntu-22.04
-
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      # -------- https://github.com/actions/checkout
-      # check out your repository files onto the runner, so that the workflow can access them
       - uses: actions/checkout@v4
-
-      # -------- https://github.com/actions/setup-python
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12.0"
+          python-version: "3.14"
+      - run: pip install ruff -e ".[test]"
+      - run: ruff check .
+      - run: pytest
 
-      # --------
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install black pytest
-          pip install -r requirements.txt
-
-      # --------
-      - name: Format with black
-        run: |
-          black . --line-length=128
-        
-      - name: Commit changes
-        uses: EndBug/add-and-commit@v9
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          add: '*.py'
-          author_name: GitHub Actions
-          author_email: actions@github.com
-          message: "Formatted code with black."
-          default_author: github_actor
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      # -------- build --------
-      - name: Install pypa/build
-        run: |
-          python -m pip install build --user
-
-      - name: Build a binary wheel and a source tarball
-        run: |
-          pip install --upgrade wheel
-          python -m build
-        
-      - name: Install twine
-        run: pip install twine
-        
-      - name: Check the distribution with twine
-        run: twine check dist/*
-
-      - name: Store the distribution packages
-        uses: actions/upload-artifact@v4
+          python-version: "3.14"
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check dist/*
+      - name: Tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "${GITHUB_REF_NAME}" = "v$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)"
+      - uses: actions/upload-artifact@v4
         with:
-          name: python-package-distributions
+          name: dist
           path: dist/
 
-  # -------- pypi --------
-  publish-to-pypi:
-    name: Publish Python 🐍 distribution 📦 to PyPI
-    needs:
-    - build
-    runs-on: ubuntu-22.04
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/complexeva
     permissions:
-      id-token: write  # IMPORTANT: mandatory for trusted publishing
-    
+      id-token: write
     steps:
-    - name: Download all the dists
-      uses: actions/download-artifact@v4
-      with:
-        name: python-package-distributions
-        path: dist/
-    - name: Publish distribution 📦 to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

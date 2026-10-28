@@ -1,7 +1,0 @@
-pandas
-matplotlib
-seaborn
-itk
-nibabel
-numba
-scipy
