@@ -1,3 +1,5 @@
+import re
+
 import numpy
 import pytest
 
@@ -78,3 +80,35 @@ def test_hilbert_variant_forwards_normalize():
 
 def test_hilbert_variant_runs():
     assert lempel_ziv_hilbert(numpy.random.default_rng(2).standard_normal(500)) > 1
+
+
+@pytest.mark.parametrize("measure", [lempel_ziv, lempel_ziv_hilbert])
+@pytest.mark.parametrize("data", [numpy.array(1.0), numpy.ones((2, 10))])
+def test_invalid_shape_names_bad_shape(measure, data):
+    with pytest.raises(ValueError, match=re.escape(str(data.shape))):
+        measure(data)
+
+
+@pytest.mark.parametrize("measure", [lempel_ziv, lempel_ziv_hilbert])
+def test_invalid_method_names_bad_value(measure):
+    with pytest.raises(ValueError, match="method.*'mode'"):
+        measure(numpy.arange(100.0), method="mode")
+
+
+@pytest.mark.parametrize("data", ["0102", "not binary"])
+def test_nonbinary_string_names_bad_value(data):
+    with pytest.raises(ValueError) as error:
+        lempel_ziv(data)
+    assert "time_series" in str(error.value)
+    assert repr(data) in str(error.value)
+
+
+@pytest.mark.parametrize("measure", [lempel_ziv, lempel_ziv_hilbert])
+@pytest.mark.parametrize("dtype", [numpy.float32, numpy.float64, numpy.int16])
+def test_inputs_computed_in_float64(measure, dtype):
+    x = (numpy.random.default_rng(8).standard_normal(100) * 100).astype(dtype)
+    assert measure(x) == measure(x.astype(numpy.float64))
+
+
+def test_binary_string_ignores_method():
+    assert lempel_ziv("0101", method="unused") == lempel_ziv("0101")

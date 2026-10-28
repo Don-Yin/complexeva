@@ -1,7 +1,10 @@
+import re
+
 import numpy
 import pytest
+from scipy.signal import hilbert
 
-from complexeva import hfd
+from complexeva import hfd, hfd_hilbert
 
 
 def reference_hfd(x, k_max):
@@ -45,3 +48,31 @@ def test_known_dimensions(name, expected, tol):
         "sine": numpy.sin(numpy.linspace(0, 20 * numpy.pi, 8192)),
     }
     assert hfd(signals[name]) == pytest.approx(expected, abs=tol)
+
+
+@pytest.mark.parametrize("measure", [hfd, hfd_hilbert])
+@pytest.mark.parametrize("data", [numpy.array(1.0), numpy.ones((2, 10))])
+def test_invalid_shape_names_bad_shape(measure, data):
+    with pytest.raises(ValueError, match=re.escape(str(data.shape))):
+        measure(data)
+
+
+@pytest.mark.parametrize("measure", [hfd, hfd_hilbert])
+@pytest.mark.parametrize("k_max", [1, 51, 2.5, float("nan"), "3", None])
+def test_invalid_k_max_names_bad_value(measure, k_max):
+    with pytest.raises(ValueError) as error:
+        measure(numpy.arange(100.0), k_max=k_max)
+    assert "k_max" in str(error.value)
+    assert repr(k_max) in str(error.value)
+
+
+def test_hilbert_matches_explicit_envelope():
+    x = numpy.random.default_rng(7).standard_normal(100)
+    assert hfd_hilbert(x) == hfd(numpy.abs(numpy.asarray(hilbert(x))))
+
+
+@pytest.mark.parametrize("measure", [hfd, hfd_hilbert])
+@pytest.mark.parametrize("dtype", [numpy.float32, numpy.float64, numpy.int16])
+def test_inputs_computed_in_float64(measure, dtype):
+    x = (numpy.random.default_rng(8).standard_normal(100) * 100).astype(dtype)
+    assert measure(x) == measure(x.astype(numpy.float64))

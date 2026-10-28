@@ -34,8 +34,17 @@ complexeva.lyapunov_exponent(x)            # largest Lyapunov exponent
 | `lempel_ziv_hilbert(x, method="median", normalize=False)` | `lempel_ziv` of the Hilbert envelope | as `lempel_ziv` | |
 | `compression_complexity(data)` | zlib-compressed size / raw size of the array bytes, 0 to about 1 | depends on the array dtype | |
 | `lyapunov_exponent(data, tau=1, m=2, dt=1.0, min_tsep=None, trajectory_len=20, fit_offset=0)` | largest Lyapunov exponent in units of 1/`dt`; positive suggests chaos, about 0 for periodic signals | `tau`, `m`: delay embedding; `min_tsep`: Theiler window (default: mean period); `trajectory_len`: steps fitted | Rosenstein et al. 1993, Physica D 65:117 |
+| `sample_entropy(x, order=2, tolerance=None)` | sample entropy in nats; lower values indicate more regularity; NaN if no length-order templates match, infinity if none extend | `order`: template length; `tolerance`: strict Chebyshev threshold, default 0.2 × population std; no self-matches | Richman & Moorman 2000, Am. J. Physiol. 278:H2039 |
+| `permutation_entropy(x, order=3, delay=1, normalize=False)` | ordinal-pattern entropy in bits, or 0 to 1 when normalized by log2(order!) | `order`: pattern length (≥ 2); `delay`: spacing in samples; ties retain temporal order | Bandt & Pompe 2002, Phys. Rev. Lett. 88:174102 |
+| `dfa(x, nvals=None)` | DFA-1 scaling exponent: about 0.5 for white noise and 1.5 for Brownian motion, not a fractal dimension | `nvals`: at least two distinct integer window sizes, 4 to len(x) − 1; default geometric scales 4 to len(x)/10; non-overlapping windows, linear detrending | Peng et al. 1994, Phys. Rev. E 49:1685 |
 
-All functions take a 1D array. Results changed in 0.3.0; see [CHANGELOG.md](CHANGELOG.md).
+All functions take a 1D array. The new entropy and DFA functions require finite,
+real values. Sample entropy uses a strict distance threshold: a constant series
+has NaN at its default zero tolerance, or 0 with a positive tolerance. DFA returns
+NaN for a constant series; its default scales require at least 58 samples. Report
+the template/delay/tolerance or fitted window sizes with results. The new measures
+are checked against antropy/nolds, which are not runtime or test dependencies.
+Results changed in 0.3.0; see [CHANGELOG.md](CHANGELOG.md).
 
 ## synthetic-data checks
 

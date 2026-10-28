@@ -1,0 +1,15 @@
+diff --git a/complexeva/lyapunov_exponent.py b/complexeva/lyapunov_exponent.py
+--- a/complexeva/lyapunov_exponent.py
++++ b/complexeva/lyapunov_exponent.py
+@@ -25,7 +25,10 @@ def _divergence(Y: NDArray[np.float64], min_tsep: int, trajectory_len: int) -> NDArra
+         for j in range(n_traj):
+             if abs(i - j) <= min_tsep:  # Theiler window: skip temporally close points
+                 continue
+-            d = np.sum((Y[i] - Y[j]) ** 2)
++            d = 0.0
++            for dimension in range(Y.shape[1]):
++                delta = Y[i, dimension] - Y[j, dimension]
++                d += delta * delta
+             if d < best:
+                 best, best_j = d, j
+         neighbour[i] = best_j

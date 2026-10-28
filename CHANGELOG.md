@@ -1,6 +1,21 @@
 # changelog
 
-## 0.3.0 (unreleased)
+## 0.4.0 (unreleased)
+
+- Added type hints, a PEP 561 `py.typed` marker, and complete parameter/return docstrings for the existing measures.
+- Replaced assertion-based input checks with `ValueError` messages naming invalid shapes or values; numeric measures validate finite real 1D input, and Lempel-Ziv rejects nonbinary strings and unknown numeric binarization methods.
+- float32/integer inputs are now computed in float64; results can differ in the last digits. `compression_complexity` is exempt and preserves the original dtype and bytes.
+- `lyapunov_exponent` validates embedding, trajectory, fitting and sampling parameters; constant signals require an explicit `min_tsep` rather than failing during the default period estimate.
+- `compression_complexity` now rejects non-1D arrays and empty byte representations with informative `ValueError` messages; NaN and infinity remain valid raw-byte input.
+
+- Added `sample_entropy(x, order=2, tolerance=None)`: sample entropy in nats, with strict Chebyshev matches, no self-matches and default tolerance 0.2 × population standard deviation.
+- Added `permutation_entropy(x, order=3, delay=1, normalize=False)`: ordinal-pattern entropy in bits, optional normalization by log2(order!), and deterministic temporal ordering for ties.
+- Added `dfa(x, nvals=None)`: DFA-1 scaling exponent with non-overlapping windows, linear detrending and configurable window sizes.
+- New measures are exported at the top level and have known-answer tests checked against antropy/nolds; neither reference package is a dependency.
+
+- Faster, with unchanged results (see `experiments/exp_000`-`exp_002`): `lempel_ziv` counts with a suffix automaton in linear time (N = 100000: about 1.7 s to 5 ms for the core count; identical integers); `lyapunov_exponent` computes neighbour distances without temporary arrays (about 28x at N = 20000; identical output); `hfd` fits its slope natively instead of with `lstsq` (about 3x at N = 300; differences below 1e-14).
+
+## 0.3.0 (2026-10-28)
 
 Numerical results of three measures change. To reproduce earlier results, pin `complexeva==0.2.3`.
 
