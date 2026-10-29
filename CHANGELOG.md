@@ -1,5 +1,10 @@
 # changelog
 
+## unreleased
+
+- `hfd` accepts a batch with time on the last axis, e.g. (channels, time), and returns one value per signal, computed in parallel and identical bit for bit to calling `hfd` on each signal (4-7x faster than a Python loop on windows and multichannel EEG).
+- Strided 1D input is copied to a contiguous array first, so every memory layout gives the same result.
+
 ## 0.4.0 (2026-10-29)
 
 - Added type hints, a PEP 561 `py.typed` marker, and complete parameter/return docstrings for the existing measures.

@@ -8,14 +8,14 @@ pip install complexeva  # Python 3.14+
 
 ```python
 import complexeva
-complexeva.hfd(signal)  # any 1D array
+complexeva.hfd(signal)  # one 1D signal, or (channels, time) for one value per channel
 ```
 
 ## measures
 
 | | measure | input | paper |
 |---|---|---|---|
-| <img src="docs/figures/icons/hfd.png" width="120" alt=""> | Higuchi fractal dimension<br>`hfd`, `hfd_hilbert` | 1D numeric | [Higuchi 1988](https://doi.org/10.1016/0167-2789(88)90081-4); [Varley 2020](https://doi.org/10.1371/journal.pone.0223812) |
+| <img src="docs/figures/icons/hfd.png" width="120" alt=""> | Higuchi fractal dimension<br>`hfd`, `hfd_hilbert` | 1D numeric; `hfd` also batches (…, time) | [Higuchi 1988](https://doi.org/10.1016/0167-2789(88)90081-4); [Varley 2020](https://doi.org/10.1371/journal.pone.0223812) |
 | <img src="docs/figures/icons/lempel_ziv.png" width="120" alt=""> | Lempel–Ziv complexity<br>`lempel_ziv`, `lempel_ziv_hilbert` | 1D numeric or binary string | [Kaspar & Schuster 1987](https://doi.org/10.1103/PhysRevA.36.842); [Schartner 2017](https://doi.org/10.1038/srep46421) |
 | <img src="docs/figures/icons/sample_entropy.png" width="120" alt=""> | sample entropy<br>`sample_entropy` | 1D numeric | [Richman & Moorman 2000](https://doi.org/10.1152/ajpheart.2000.278.6.H2039) |
 | <img src="docs/figures/icons/permutation_entropy.png" width="120" alt=""> | permutation entropy<br>`permutation_entropy` | 1D numeric | [Bandt & Pompe 2002](https://doi.org/10.1103/PhysRevLett.88.174102) |

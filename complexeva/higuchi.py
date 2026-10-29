@@ -1,9 +1,9 @@
 import numpy
-from numba import njit
+from numba import njit, prange
 from numpy.typing import ArrayLike, NDArray
 
 from ._hilbert import hilbert_envelope
-from ._validation import as_finite_1d, check_positive_int
+from ._validation import _first_nonfinite, as_array, as_real_float64, check_positive_int
 
 
 @njit(cache=True, fastmath={"reassoc"})
@@ -50,29 +50,56 @@ def _hfd_core(X: NDArray[numpy.float64], k_max: int) -> float:
     return numpy.sum(dx * (L - L.mean())) / numpy.sum(dx * dx)
 
 
-def hfd(X: ArrayLike, k_max: int | numpy.integer = 10) -> float:
-    """Estimate the Higuchi fractal dimension of a one-dimensional signal.
+@njit(cache=True, parallel=True)
+def _hfd_rows(X: NDArray[numpy.float64], k_max: int) -> NDArray[numpy.float64]:
+    """Dimension of each row, in parallel over rows (4-7x a Python loop; exp_019_batch_1d).
+
+    Rows of a C-contiguous array are contiguous, so each row compiles to the same arithmetic as a
+    1D call and the result is identical bit for bit.
+    """
+    out = numpy.empty(X.shape[0])
+    for i in prange(X.shape[0]):
+        out[i] = _hfd_core(X[i], k_max)
+    return out
+
+
+def hfd(X: ArrayLike, k_max: int | numpy.integer = 10) -> float | NDArray[numpy.float64]:
+    """Estimate the Higuchi fractal dimension of one signal, or of every signal along the last axis.
 
     Args:
-        X: One-dimensional, finite, real-valued samples, converted to float64. Requires at least
-            2 * k_max samples.
+        X: Finite, real-valued samples, converted to float64, with time on the last axis: one signal
+            of shape (time,) or a batch such as (channels, time). Requires at least 2 * k_max samples.
+            A batch is computed in parallel over signals; set NUMBA_NUM_THREADS to limit threads.
         k_max: Largest integer time interval included in the regression. Must be between 2 and
             len(X) // 2, inclusive. Defaults to 10; report the chosen value with results.
 
     Returns:
         Slope of log curve length against log inverse interval: approximately 1 for smooth signals,
         1.5 for Brownian motion, and 2 for white noise. The dimension of a constant signal is
-        undefined and is returned as NaN.
+        undefined and is returned as NaN. A float for one signal; for a batch, a float64 array of
+        shape X.shape[:-1] whose entries equal hfd on each signal.
 
     Raises:
-        ValueError: If X is not a finite, real, one-dimensional signal, or k_max is not an integer
-            in the stated range. The error identifies the invalid value or shape.
+        ValueError: If X is a scalar, not finite and real, or k_max is not an integer in the stated
+            range. The error identifies the invalid value, its position, or the shape.
     """
-    X = as_finite_1d(X, "X")
+    values = as_array(X, "X")
+    if values.ndim == 0:
+        raise ValueError(f"X must have a time axis, got shape {values.shape}")
+    values = as_real_float64(values, "X")
+    index = _first_nonfinite(values.reshape(-1))
+    if index >= 0:
+        where = tuple(int(i) for i in numpy.unravel_index(index, values.shape))
+        raise ValueError(
+            f"X must contain only finite values, got {values.flat[index]!r} at index {where if values.ndim > 1 else index}"
+        )
+    n = values.shape[-1]
     k_max = check_positive_int(k_max, "k_max", minimum=2)
-    if k_max > len(X) // 2:
-        raise ValueError(f"k_max must be between 2 and len(X) // 2 = {len(X) // 2}, got {k_max}")
-    return float(_hfd_core(X, k_max))
+    if k_max > n // 2:
+        raise ValueError(f"k_max must be between 2 and X.shape[-1] // 2 = {n // 2}, got {k_max}")
+    if values.ndim == 1:
+        return float(_hfd_core(values, k_max))
+    return _hfd_rows(values.reshape(-1, n), k_max).reshape(values.shape[:-1])
 
 
 def hfd_hilbert(X: ArrayLike, k_max: int | numpy.integer = 10) -> float:
@@ -91,4 +118,5 @@ def hfd_hilbert(X: ArrayLike, k_max: int | numpy.integer = 10) -> float:
         ValueError: If X is empty or not a finite, real, one-dimensional signal, or k_max is outside
             the integer range accepted by hfd.
     """
-    return hfd(hilbert_envelope(X, "X"), k_max=k_max)
+    # The envelope is one signal, so hfd returns a float.
+    return float(hfd(hilbert_envelope(X, "X"), k_max=k_max))

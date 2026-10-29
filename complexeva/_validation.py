@@ -15,17 +15,27 @@ def _first_nonfinite(values: NDArray[numpy.float64]) -> int:
     return -1
 
 
-def as_finite_1d(x: ArrayLike, name: str = "x") -> NDArray[numpy.float64]:
-    """Return a real, finite 1D float64 array; leave length checks to the caller."""
+def as_array(x: ArrayLike, name: str = "x") -> NDArray:
+    """Return x as an array, or raise ValueError when it is ragged or not array-like."""
     try:
-        values = numpy.asarray(x)
+        return numpy.asarray(x)
     except (TypeError, ValueError) as error:
-        raise ValueError(f"{name} must be a 1D real numeric array, got {x!r}") from error
-    if values.ndim != 1:
-        raise ValueError(f"{name} must be a 1D array, got shape {values.shape}")
+        raise ValueError(f"{name} must be a real numeric array, got {x!r}") from error
+
+
+def as_real_float64(values: NDArray, name: str = "x") -> NDArray[numpy.float64]:
+    """Return a C-contiguous float64 copy or view of a real numeric array, or raise ValueError."""
     if values.dtype.kind not in "biuf":
         raise ValueError(f"{name} must contain real numbers, got dtype {values.dtype} with values {values!r}")
-    values = numpy.asarray(values, dtype=numpy.float64)
+    return numpy.ascontiguousarray(values, dtype=numpy.float64)
+
+
+def as_finite_1d(x: ArrayLike, name: str = "x") -> NDArray[numpy.float64]:
+    """Return a real, finite 1D float64 array; leave length checks to the caller."""
+    values = as_array(x, name)
+    if values.ndim != 1:
+        raise ValueError(f"{name} must be a 1D array, got shape {values.shape}")
+    values = as_real_float64(values, name)
     index = _first_nonfinite(values)
     if index >= 0:
         raise ValueError(f"{name} must contain only finite values, got {values[index]!r} at index {index}")

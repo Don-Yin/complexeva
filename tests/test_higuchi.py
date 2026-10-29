@@ -59,11 +59,44 @@ def test_known_dimensions(name, expected, tol):
     assert hfd(signals[name]) == pytest.approx(expected, abs=tol)
 
 
-@pytest.mark.parametrize("measure", [hfd, hfd_hilbert])
-@pytest.mark.parametrize("data", [numpy.array(1.0), numpy.ones((2, 10))])
+@pytest.mark.parametrize(
+    ("measure", "data"),
+    [(hfd, numpy.array(1.0)), (hfd_hilbert, numpy.array(1.0)), (hfd_hilbert, numpy.ones((2, 10)))],
+)
 def test_invalid_shape_names_bad_shape(measure, data):
     with pytest.raises(ValueError, match=re.escape(str(data.shape))):
         measure(data)
+
+
+@pytest.mark.parametrize("shape", [(0, 50), (1, 50), (246, 261), (3, 4, 100)])
+@pytest.mark.parametrize("layout", ["C", "F", "float32"])
+def test_batch_equals_each_signal_bitwise(shape, layout):
+    X = numpy.random.default_rng(1).standard_normal(shape)
+    X = {"C": X, "F": numpy.asfortranarray(X), "float32": X.astype(numpy.float32)}[layout]
+    out = numpy.asarray(hfd(X))
+    assert out.shape == shape[:-1]
+    expected = numpy.array([hfd(signal) for signal in X.reshape(-1, shape[-1])]).reshape(shape[:-1])
+    numpy.testing.assert_array_equal(out, expected)
+
+
+def test_batch_constant_row_is_nan_and_others_unchanged():
+    X = numpy.random.default_rng(2).standard_normal((3, 100))
+    X[1] = 4.0
+    out = numpy.asarray(hfd(X))
+    assert numpy.isnan(out[1])
+    assert out[0] == hfd(X[0]) and out[2] == hfd(X[2])
+
+
+def test_batch_nonfinite_names_position():
+    X = numpy.zeros((2, 3, 40))
+    X[1, 2, 7] = numpy.inf
+    with pytest.raises(ValueError, match=re.escape("inf) at index (1, 2, 7)")):
+        hfd(X)
+
+
+def test_batch_k_max_uses_time_axis():
+    with pytest.raises(ValueError, match=re.escape("X.shape[-1] // 2 = 5")):
+        hfd(numpy.ones((100, 10)), k_max=6)
 
 
 @pytest.mark.parametrize("measure", [hfd, hfd_hilbert])
