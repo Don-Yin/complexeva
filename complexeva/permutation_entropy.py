@@ -40,39 +40,28 @@ def permutation_entropy(
 ) -> float:
     """Shannon entropy of ordinal patterns, in bits or normalized to [0, 1].
 
-    Parameters
-    ----------
-    x : array-like
-        Finite, real 1D time series with at least ``(order - 1) * delay + 1``
-        samples.
-    order : int, default 3
-        Number of samples per ordinal pattern; must be at least 2.
-    delay : int, default 1
-        Positive sample spacing within each pattern. Pattern starting points
-        advance by one sample, regardless of the delay.
-    normalize : bool, default False
-        Divide the entropy in bits by ``log2(order!)`` to obtain a value
-        between 0 and 1.
+    Args:
+        x: Finite, real 1D time series with at least (order - 1) * delay + 1 samples.
+        order: Number of samples per ordinal pattern, at least 2. Defaults to 3.
+        delay: Positive sample spacing within each pattern. Pattern starting points advance by
+            one sample, regardless of the delay. Defaults to 1.
+        normalize: Divide the entropy in bits by log2(order!) to obtain a value between 0 and 1.
+            Defaults to False.
 
-    Returns
-    -------
-    float
-        Entropy of the observed ordinal-pattern probabilities. A constant or
-        strictly monotonic series has entropy 0.
+    Returns:
+        Entropy of the observed ordinal-pattern probabilities. A constant or strictly monotonic
+        series has entropy 0.
 
-    Raises
-    ------
-    ValueError
-        If the input is not finite, real and 1D, is too short, or order/delay
-        is not an integer in its allowed range.
+    Raises:
+        ValueError: If the input is not finite, real and 1D, is too short, or order/delay is not
+            an integer in its allowed range.
 
-    Notes
-    -----
-    Equal values retain their temporal order (stable sorting); no random
-    jitter is added. Orders up to 7 use collision-free factorial codes and a
-    bounded histogram; larger orders count patterns directly, without an
-    integer hash that can overflow. This implements Bandt and Pompe (2002)
-    permutation entropy, as in ``antropy.perm_entropy``.
+    Note:
+        Equal values retain their temporal order (stable sorting); no random
+        jitter is added. Orders up to 7 use collision-free factorial codes and a
+        bounded histogram; larger orders count patterns directly, without an
+        integer hash that can overflow. This implements Bandt and Pompe (2002)
+        permutation entropy, as in antropy.perm_entropy.
     """
     values = as_finite_1d(x)
     order = check_positive_int(order, "order", minimum=2)

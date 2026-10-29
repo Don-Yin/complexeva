@@ -59,40 +59,32 @@ def _fluctuations(walk: NDArray[numpy.float64], scales: NDArray[numpy.int64]) ->
 def dfa(x: ArrayLike, nvals: ArrayLike | None = None) -> float:
     """First-order detrended fluctuation analysis with non-overlapping windows.
 
-    Parameters
-    ----------
-    x : array-like
-        Finite, real 1D time series. At least 6 samples are needed with
-        explicit window sizes; the default sizes need at least 58 samples.
-    nvals : array-like of int or None, default None
-        At least two distinct window sizes, each between 4 and ``len(x) - 1``.
-        The default uses ``floor(4 * 1.2**k)`` up to ``len(x) / 10``, with
-        duplicate sizes removed, as in ``antropy.detrended_fluctuation``.
-        Report the fitted window sizes with results.
+    Args:
+        x: Finite, real 1D time series. At least 6 samples are needed with explicit window
+            sizes; the default sizes need at least 58 samples.
+        nvals: At least two distinct integer window sizes, each between 4 and len(x) - 1.
+            None (default) uses floor(4 * 1.2**k) up to len(x) / 10, with duplicate sizes
+            removed, as in antropy.detrended_fluctuation. Report the fitted window sizes with
+            results.
 
-    Returns
-    -------
-    float
-        Slope of log RMS fluctuation versus log window size. White noise has
-        an exponent near 0.5 and Brownian motion near 1.5. Returns NaN when
-        fewer than two scales have nonzero fluctuation, including constant
-        input. This is a scaling exponent, not a fractal dimension.
+    Returns:
+        Slope of log RMS fluctuation versus log window size. White noise has an exponent near
+        0.5 and Brownian motion near 1.5. Returns NaN when fewer than two scales have nonzero
+        fluctuation, including constant input. This is a scaling exponent, not a fractal
+        dimension.
 
-    Raises
-    ------
-    ValueError
-        If the input is not finite, real and 1D, is too short, or the window
-        sizes are invalid or insufficient for a slope fit.
+    Raises:
+        ValueError: If the input is not finite, real and 1D, is too short, or the window sizes
+            are invalid or insufficient for a slope fit.
 
-    Notes
-    -----
-    The demeaned series is cumulatively summed, then a least-squares linear
-    trend is removed independently from each complete window. A trailing
-    incomplete window is discarded at each scale. Squared residuals are
-    averaged across all samples and windows before taking one square root.
-    The log-log slope is an ordinary least-squares fit (not RANSAC).
-    This is DFA-1 (Peng et al., 1994); it also matches ``nolds.dfa`` with the
-    same nvals, ``overlap=False``, ``order=1`` and both fits set to ``"poly"``.
+    Note:
+        The demeaned series is cumulatively summed, then a least-squares linear
+        trend is removed independently from each complete window. A trailing
+        incomplete window is discarded at each scale. Squared residuals are
+        averaged across all samples and windows before taking one square root.
+        The log-log slope is an ordinary least-squares fit (not RANSAC).
+        This is DFA-1 (Peng et al., 1994); it also matches nolds.dfa with the
+        same nvals, overlap=False, order=1 and both fits set to "poly".
     """
     values = as_finite_1d(x)
     if len(values) < 6:

@@ -41,42 +41,32 @@ def sample_entropy(
 ) -> float:
     """Sample entropy using the Chebyshev distance, in natural-log units (nats).
 
-    Parameters
-    ----------
-    x : array-like
-        Finite, real 1D time series with at least ``order + 2`` samples.
-    order : int, default 2
-        Length of the templates before extending them by one sample.
-    tolerance : float or None, default None
-        Nonnegative, finite distance threshold in the units of ``x``. The
-        default is ``0.2 * std(x, ddof=0)``. Matches require distance strictly
-        less than this threshold, not less than or equal to it.
+    Args:
+        x: Finite, real 1D time series with at least order + 2 samples.
+        order: Length of the templates before extending them by one sample. Defaults to 2.
+        tolerance: Nonnegative, finite distance threshold in the units of x. None (default) uses
+            0.2 * std(x, ddof=0). Matches require distance strictly less than this threshold, not
+            less than or equal to it.
 
-    Returns
-    -------
-    float
-        ``-log(A / B)``, where B counts matching pairs of length ``order`` and
-        A counts those that still match at length ``order + 1``. Returns NaN
-        if B is zero (including zero tolerance), and infinity if only A is zero.
-        A constant series has NaN at the default zero tolerance, or 0 at a
-        positive tolerance.
+    Returns:
+        -log(A / B), where B counts matching pairs of length order and A counts those that still
+        match at length order + 1. Returns NaN if B is zero (including zero tolerance), and
+        infinity if only A is zero. A constant series has NaN at the default zero tolerance, or 0
+        at a positive tolerance.
 
-    Raises
-    ------
-    ValueError
-        If the input is not finite, real and 1D, is too short, or a parameter
-        is outside its allowed range.
+    Raises:
+        ValueError: If the input is not finite, real and 1D, is too short, or a parameter is
+            outside its allowed range.
 
-    Notes
-    -----
-    Self-matches are excluded. Both counts use the same ``len(x) - order``
-    templates, omitting the last length-order template because it cannot be
-    extended. Long inputs with order <= 4 use exact dual-tree pair counting;
-    other inputs use an allocation-free diagonal scan. Worst-case counting is
-    quadratic, with O(N) auxiliary memory for the bounded-dimensional tree
-    and O(1) auxiliary memory for diagonal counting.
-    This is the Richman and Moorman (2000) sample entropy definition, with the
-    same default tolerance as ``antropy.sample_entropy``.
+    Note:
+        Self-matches are excluded. Both counts use the same len(x) - order
+        templates, omitting the last length-order template because it cannot be
+        extended. Long inputs with order <= 4 use exact dual-tree pair counting;
+        other inputs use an allocation-free diagonal scan. Worst-case counting is
+        quadratic, with O(N) auxiliary memory for the bounded-dimensional tree
+        and O(1) auxiliary memory for diagonal counting.
+        This is the Richman and Moorman (2000) sample entropy definition, with the
+        same default tolerance as antropy.sample_entropy.
     """
     values = as_finite_1d(x)
     order = check_positive_int(order, "order")
