@@ -1,3 +1,6 @@
+from itertools import product
+from math import factorial, log2
+
 import numpy
 import pytest
 
@@ -65,3 +68,67 @@ def test_short_series_rejected(x, order, delay):
 
 def test_numpy_integer_parameters_are_accepted():
     assert permutation_entropy(numpy.ones(20), order=numpy.int64(3), delay=numpy.int64(2)) == 0.0
+
+
+def _reference(x, order, delay, normalize):
+    """Evaluate the pre-optimization formula without an integer encoding."""
+    values = numpy.asarray(x, dtype=numpy.float64)
+    window = (order - 1) * delay + 1
+    embedded = numpy.lib.stride_tricks.sliding_window_view(values, window)[:, ::delay]
+    patterns = numpy.argsort(embedded, axis=1, kind="stable")
+    _, counts = numpy.unique(patterns, axis=0, return_counts=True)
+    p = counts / counts.sum()
+    result = float(-numpy.sum(p * numpy.log2(p)))
+    return result / log2(factorial(order)) if normalize else result
+
+
+@pytest.mark.parametrize("n", [1000, 10000, 100000])
+@pytest.mark.parametrize("order", range(3, 8))
+@pytest.mark.parametrize("delay", [1, 2, 3])
+@pytest.mark.parametrize("normalize", [False, True])
+def test_permutation_entropy_requested_grid(n, order, delay, normalize):
+    x = numpy.random.default_rng(20261029 + n).normal(size=n)
+    assert abs(permutation_entropy(x, order, delay, normalize) - _reference(x, order, delay, normalize)) < 1e-12
+
+
+@pytest.mark.parametrize("order", [2, 3, 4, 5, 6, 7, 8, 12, 20])
+@pytest.mark.parametrize("delay", [1, 2, 3])
+@pytest.mark.parametrize("normalize", [False, True])
+def test_permutation_entropy_ties_dtypes_and_fallback(order, delay, normalize):
+    rng = numpy.random.default_rng(654)
+    x = rng.normal(size=257)
+    cases = [
+        rng.integers(-2, 3, size=257),
+        numpy.ones(257),
+        numpy.arange(257),
+        -numpy.arange(257),
+        numpy.round(x),
+        x.astype(numpy.float32),
+        x > 0,
+        x.tolist(),
+        x[::-1],
+        x[::2],
+        numpy.resize([0.0, -0.0, 1.0, -1.0], 257),
+        1e15 + numpy.round(x),
+        x * 1e-200,
+        numpy.resize([1e308, -1e308, 0.0], 257),
+    ]
+    for case in cases:
+        expected = _reference(case, order, delay, normalize)
+        assert abs(permutation_entropy(case, order, delay, normalize) - expected) < 1e-12
+
+
+@pytest.mark.parametrize("order", range(2, 8))
+def test_permutation_entropy_exhaustive_binary_ties(order):
+    for values in product([0.0, 1.0], repeat=9):
+        for normalize in (False, True):
+            expected = _reference(values, order, 1, normalize)
+            assert abs(permutation_entropy(values, order, 1, normalize) - expected) < 1e-12
+
+
+@pytest.mark.parametrize("order", range(2, 9))
+@pytest.mark.parametrize("delay", [1, 2, 3])
+def test_permutation_entropy_one_window(order, delay):
+    x = numpy.random.default_rng(245).integers(-2, 3, size=(order - 1) * delay + 1)
+    assert permutation_entropy(x, order, delay) == 0.0
+    assert permutation_entropy(x, order, delay, normalize=True) == 0.0

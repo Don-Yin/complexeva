@@ -1,6 +1,6 @@
 # changelog
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-10-29)
 
 - Added type hints, a PEP 561 `py.typed` marker, and complete parameter/return docstrings for the existing measures.
 - Replaced assertion-based input checks with `ValueError` messages naming invalid shapes or values; numeric measures validate finite real 1D input, and Lempel-Ziv rejects nonbinary strings and unknown numeric binarization methods.
@@ -13,7 +13,9 @@
 - Added `dfa(x, nvals=None)`: DFA-1 scaling exponent with non-overlapping windows, linear detrending and configurable window sizes.
 - New measures are exported at the top level and have known-answer tests checked against antropy/nolds; neither reference package is a dependency.
 
-- Faster, with unchanged results (see `experiments/exp_000`-`exp_002`): `lempel_ziv` counts with a suffix automaton in linear time (N = 100000: about 1.7 s to 5 ms for the core count; identical integers); `lyapunov_exponent` computes neighbour distances without temporary arrays (about 28x at N = 20000; identical output); `hfd` fits its slope natively instead of with `lstsq` (about 3x at N = 300; differences below 1e-14).
+- Faster, with unchanged results: `lempel_ziv` counts with a suffix automaton in linear time (N = 100000: about 1.7 s to 5 ms for the core count; identical integers); `lyapunov_exponent` computes neighbour distances without temporary arrays (about 28x at N = 20000; identical output); `hfd` fits its slope natively instead of with `lstsq` (about 3x at N = 300; differences below 1e-14); `permutation_entropy` counts ordinal patterns in a fixed histogram for orders up to 7 (about 450x at N = 100000); `sample_entropy` counts template matches with an exact dual tree on long series (N = 100000: about 8.8 s to 0.26 s); `lyapunov_exponent` prunes its exact neighbour search by sorting (N = 100000: about 9 s to 0.09 s); `dfa` and `hfd_hilbert` allocate less (1.2-1.9x faster).
+- Further speed and memory work: `dfa` fits every window size in one compiled kernel (N = 1000: about 105 to 48 µs); `sample_entropy` counts without branches (N = 100000: about 263 to 144 ms); `lyapunov_exponent` skips blocks inside the Theiler window, so trending series are no longer quadratic (noisy line, N = 100000: 2.5 s to 0.15 s); `lempel_ziv` uses about 32 instead of 80 MB per million samples and rejects series of 2**30 samples or more. `dfa` now matches an exact reference to within κ ulp instead of reproducing NumPy's summation order; slopes on ill-conditioned adjacent window sizes can differ from 0.3.x by up to about 1e-10.
+- Faster start: Numba kernels are cached on disk and `scipy.signal` is no longer imported (import 0.56 to 0.20 s). Read-only installs should set `NUMBA_CACHE_DIR`.
 
 ## 0.3.0 (2026-10-28)
 

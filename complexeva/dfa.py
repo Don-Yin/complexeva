@@ -1,7 +1,59 @@
+import math
+
 import numpy
-from numpy.typing import ArrayLike
+from numba import njit
+from numpy.typing import ArrayLike, NDArray
 
 from ._validation import as_finite_1d
+
+_RUN = 32  # squares summed plainly per run before the compensated combination
+_SPLIT = 134217729.0  # 2**27 + 1: Veltkamp constant that splits a float64 into two 26-bit halves
+
+
+@njit(cache=True)  # must stay non-recursive: Numba cannot reload a cached function that calls itself
+def _fluctuations(walk: NDArray[numpy.float64], scales: NDArray[numpy.int64]) -> NDArray[numpy.float64]:
+    """Pooled RMS residual of per-window linear fits for every window size, in one compiled call.
+
+    Sums are anchored at each window's first value and residuals are squared explicitly, so a large
+    offset or steep trend cannot cancel catastrophically as it does in prefix-sum formulas. The product
+    of the fitted slope and the (half-integer) time is formed exactly from a 26-bit split of the slope.
+    """
+    out = numpy.empty(len(scales))
+    for i in range(len(scales)):
+        size = scales[i]
+        count = len(walk) // size
+        half = (size - 1) / 2
+        spread = size * (size * size - 1.0) / 12
+        total = 0.0
+        carry = 0.0
+        for k in range(count):
+            start = k * size
+            anchor = walk[start]
+            level = 0.0
+            cross = 0.0
+            for j in range(size):
+                shifted = walk[start + j] - anchor
+                level += shifted
+                cross += (j - half) * shifted
+            level /= size
+            slope = cross / spread
+            split = _SPLIT * slope
+            slope_hi = split - (split - slope)
+            slope_lo = slope - slope_hi
+            # Errors in level and slope reach the residual sum only at second order; the residuals
+            # themselves are rounded once, and their squares are summed in runs combined with TwoSum.
+            centre = anchor + level
+            for first in range(0, size, _RUN):
+                run = 0.0
+                for j in range(first, min(first + _RUN, size)):
+                    residual = ((walk[start + j] - centre) - slope_hi * (j - half)) - slope_lo * (j - half)
+                    run += residual * residual
+                new_total = total + run
+                virtual = new_total - total
+                carry += (total - (new_total - virtual)) + (run - virtual)
+                total = new_total
+        out[i] = numpy.sqrt((total + carry) / (count * size))
+    return out
 
 
 def dfa(x: ArrayLike, nvals: ArrayLike | None = None) -> float:
@@ -46,8 +98,8 @@ def dfa(x: ArrayLike, nvals: ArrayLike | None = None) -> float:
     if len(values) < 6:
         raise ValueError(f"x needs at least 6 samples for two window sizes, got {len(values)}")
     if nvals is None:
-        max_power = int(numpy.floor(numpy.log(len(values) / 40) / numpy.log(1.2)))
-        scales = numpy.unique(numpy.floor(4 * 1.2 ** numpy.arange(max_power + 1)).astype(numpy.int64))
+        max_power = math.floor(math.log(len(values) / 40) / math.log(1.2))
+        scales = numpy.array(sorted({int(4 * 1.2**k) for k in range(max_power + 1)}), dtype=numpy.int64)
     else:
         try:
             scales = numpy.asarray(nvals)
@@ -55,21 +107,16 @@ def dfa(x: ArrayLike, nvals: ArrayLike | None = None) -> float:
             raise ValueError(f"nvals must be a 1D array of integers, got {nvals!r}") from error
     if scales.ndim != 1 or scales.dtype.kind not in "iu":
         raise ValueError(f"nvals must be a 1D array of integers, got {scales!r}")
-    if len(scales) < 2 or len(numpy.unique(scales)) != len(scales):
+    sizes = scales.tolist()
+    if len(sizes) < 2 or len(set(sizes)) != len(sizes):
         raise ValueError(f"nvals must contain at least two distinct window sizes, got {scales!r} for len(x)={len(values)}")
-    if numpy.any(scales < 4) or numpy.any(scales >= len(values)):
+    if min(sizes) < 4 or max(sizes) >= len(values):
         raise ValueError(f"nvals must be between 4 and len(x) - 1 = {len(values) - 1}, got {scales!r}")
     # Subtracting an observed value first keeps constant signals exactly zero.
-    centered = values - values[0]
-    walk = numpy.cumsum(centered - centered.mean())
-    fluctuations = numpy.empty(len(scales))
-    for i, size in enumerate(scales):
-        windows = walk[: len(walk) - len(walk) % size].reshape(-1, size)
-        time = numpy.arange(size, dtype=numpy.float64) - (size - 1) / 2
-        residuals = windows - windows.mean(axis=1, keepdims=True)
-        slopes = (residuals @ time) / (time @ time)
-        residuals -= slopes[:, None] * time
-        fluctuations[i] = numpy.sqrt(numpy.mean(residuals**2))
+    walk = values - values[0]
+    walk -= walk.mean()
+    numpy.cumsum(walk, out=walk)
+    fluctuations = _fluctuations(walk, scales.astype(numpy.int64))
     nonzero = fluctuations > 0
     if numpy.count_nonzero(nonzero) < 2:
         return float("nan")

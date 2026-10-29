@@ -1,27 +1,37 @@
-from numbers import Real
-
 import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
 
-from ._validation import as_finite_1d, check_positive_int
+from ._sampen_tree import _tree_match_count
+from ._validation import as_finite_1d, check_finite_real, check_positive_int
+
+_TREE_MIN_TEMPLATES = 4096  # An allocation-free scan beats tree setup on short series.
+_TREE_MAX_ORDER = 4  # Bound tree storage and avoid ineffective high-dimensional pruning.
 
 
-@njit
-def _match_counts(x: NDArray[numpy.float64], order: int, tolerance: float) -> tuple[int, int]:
-    """Count unordered matching template pairs, excluding self-matches."""
+@njit(cache=True)
+def _diagonal_match_counts(x: NDArray[numpy.float64], order: int, tolerance: float) -> tuple[int, int]:
+    """Count matching windows along offset diagonals without working arrays."""
     count_m, count_m1 = 0, 0
-    n_templates = len(x) - order
-    for i in range(n_templates - 1):
-        for j in range(i + 1, n_templates):
-            for k in range(order):
-                if abs(x[i + k] - x[j + k]) >= tolerance:
-                    break
-            else:
-                count_m += 1
-                if abs(x[i + order] - x[j + order]) < tolerance:
-                    count_m1 += 1
+    for offset in range(1, len(x) - order):
+        run = 0
+        for i in range(len(x) - offset):
+            run = run + 1 if abs(x[i] - x[i + offset]) < tolerance else 0
+            count_m += run >= order
+            count_m1 += run > order
+        count_m -= run >= order  # The final window has no later template to pair with.
     return count_m, count_m1
+
+
+def _match_counts(x: NDArray[numpy.float64], order: int, tolerance: float) -> tuple[int, int]:
+    """Use bounded-memory spatial counting only for long, low-order inputs."""
+    n_templates = len(x) - order
+    if n_templates < _TREE_MIN_TEMPLATES or order > _TREE_MAX_ORDER:
+        return _diagonal_match_counts(x, order, tolerance)
+    return (
+        _tree_match_count(x, order, n_templates, tolerance),
+        _tree_match_count(x, order + 1, n_templates, tolerance),
+    )
 
 
 def sample_entropy(
@@ -61,7 +71,10 @@ def sample_entropy(
     -----
     Self-matches are excluded. Both counts use the same ``len(x) - order``
     templates, omitting the last length-order template because it cannot be
-    extended. Pair counting uses O(N**2 * order) time and O(1) auxiliary memory.
+    extended. Long inputs with order <= 4 use exact dual-tree pair counting;
+    other inputs use an allocation-free diagonal scan. Worst-case counting is
+    quadratic, with O(N) auxiliary memory for the bounded-dimensional tree
+    and O(1) auxiliary memory for diagonal counting.
     This is the Richman and Moorman (2000) sample entropy definition, with the
     same default tolerance as ``antropy.sample_entropy``.
     """
@@ -71,15 +84,7 @@ def sample_entropy(
         raise ValueError(f"x needs at least order + 2 = {order + 2} samples, got {len(values)}")
     if tolerance is None:
         tolerance = float(0.2 * numpy.std(values, ddof=0))
-    if isinstance(tolerance, (bool, numpy.bool_)) or not isinstance(tolerance, Real):
-        # All invalid public inputs use ValueError, including invalid types.
-        raise ValueError(f"tolerance must be a finite nonnegative real number, got {tolerance!r}")  # noqa: TRY004
-    try:
-        tolerance = float(tolerance)
-    except OverflowError as error:
-        raise ValueError(f"tolerance must be finite, got {tolerance!r}") from error
-    if not numpy.isfinite(tolerance) or tolerance < 0:
-        raise ValueError(f"tolerance must be a finite nonnegative real number, got {tolerance!r}")
+    tolerance = check_finite_real(tolerance, "tolerance", allow_zero=True)
     if tolerance == 0:
         return float("nan")
     count_m, count_m1 = _match_counts(values, order, tolerance)

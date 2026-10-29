@@ -1,9 +1,38 @@
 from math import factorial, log2
 
 import numpy
+from numba import njit
 from numpy.typing import ArrayLike
 
 from ._validation import as_finite_1d, check_positive_int
+
+_MAX_HISTOGRAM_ORDER = 7  # Bound the histogram to 7! int64 bins (40,320 bytes).
+
+
+def _make_permutation_counter(order):
+    """Specialize one stable Lehmer-counting loop for a fixed small order."""
+    size = factorial(order)
+
+    @njit(cache=True)
+    def count(values, delay):
+        """Count patterns without materializing windows, ranks, or per-window codes."""
+        counts = numpy.zeros(size, dtype=numpy.int64)
+        for start in range(len(values) - (order - 1) * delay):
+            code = 0
+            for left in range(order - 1):
+                digit = 0
+                value = values[start + left * delay]
+                for right in range(left + 1, order):
+                    # Equal later samples follow the current sample in a stable sort.
+                    digit += value > values[start + right * delay]
+                code = code * (order - left) + digit
+            counts[code] += 1
+        return counts
+
+    return count
+
+
+_PERMUTATION_COUNTERS = {order: _make_permutation_counter(order) for order in range(2, _MAX_HISTOGRAM_ORDER + 1)}
 
 
 def permutation_entropy(
@@ -40,9 +69,10 @@ def permutation_entropy(
     Notes
     -----
     Equal values retain their temporal order (stable sorting); no random
-    jitter is added. Patterns are counted directly, without an integer hash
-    that can overflow for large orders. This implements Bandt and Pompe
-    (2002) permutation entropy, as in ``antropy.perm_entropy``.
+    jitter is added. Orders up to 7 use collision-free factorial codes and a
+    bounded histogram; larger orders count patterns directly, without an
+    integer hash that can overflow. This implements Bandt and Pompe (2002)
+    permutation entropy, as in ``antropy.perm_entropy``.
     """
     values = as_finite_1d(x)
     order = check_positive_int(order, "order", minimum=2)
@@ -50,9 +80,13 @@ def permutation_entropy(
     window = (order - 1) * delay + 1
     if len(values) < window:
         raise ValueError(f"x needs at least (order - 1) * delay + 1 = {window} samples, got {len(values)}")
-    embedded = numpy.lib.stride_tricks.sliding_window_view(values, window)[:, ::delay]
-    patterns = numpy.argsort(embedded, axis=1, kind="stable")
-    _, counts = numpy.unique(patterns, axis=0, return_counts=True)
+    if order <= _MAX_HISTOGRAM_ORDER:
+        counts = _PERMUTATION_COUNTERS[order](values, delay)
+        counts = counts[counts != 0]
+    else:
+        embedded = numpy.lib.stride_tricks.sliding_window_view(values, window)[:, ::delay]
+        patterns = numpy.argsort(embedded, axis=1, kind="stable")
+        _, counts = numpy.unique(patterns, axis=0, return_counts=True)
     probabilities = counts / counts.sum()
     entropy = float(-numpy.sum(probabilities * numpy.log2(probabilities)))
     if normalize:

@@ -1,6 +1,6 @@
 # References
 
-Papers consulted while developing 0.3.0. Decisions that rely on them are recorded in [design.md](design.md). Local PDFs are in `docs/papers/<slug>.pdf` and are git-ignored, because most of them are under publisher copyright. The Lempel & Ziv, Kaspar & Schuster and Rosenstein papers have no local copy.
+Every public function cites a method paper below. Decisions that rely on these papers are recorded in [design.md](design.md). Every paper listed here has a local PDF at `docs/papers/<slug>.pdf`; the PDFs are git-ignored because most are under publisher copyright. Bandt & Pompe is the authors' preprint (December 2001), and Cilibrasi & Vitányi is the arXiv version (cs/0312044).
 
 ## Method definitions
 
@@ -10,6 +10,12 @@ Papers consulted while developing 0.3.0. Decisions that rely on them are recorde
 | Lempel & Ziv 1976, *IEEE Trans. Inf. Theory* 22: 75-81. On the complexity of finite sequences | [10.1109/TIT.1976.1055501](https://doi.org/10.1109/TIT.1976.1055501) | `lempel_ziv`: complexity definition |
 | Kaspar & Schuster 1987, *Phys. Rev. A* 36: 842-848. Easily calculable measure for the complexity of spatiotemporal patterns | [10.1103/PhysRevA.36.842](https://doi.org/10.1103/PhysRevA.36.842) | `lempel_ziv`: counting algorithm, including the final unfinished component, and the `c log2(n) / n` normalisation |
 | Rosenstein, Collins & De Luca 1993, *Physica D* 65: 117-134. A practical method for calculating largest Lyapunov exponents from small data sets | [10.1016/0167-2789(93)90009-P](https://doi.org/10.1016/0167-2789(93)90009-P) | `lyapunov_exponent`: the algorithm and the Theiler window |
+| Richman & Moorman 2000, *Am. J. Physiol. Heart Circ. Physiol.* 278: H2039-H2049. Physiological time-series analysis using approximate entropy and sample entropy | [10.1152/ajpheart.2000.278.6.H2039](https://doi.org/10.1152/ajpheart.2000.278.6.H2039) | `sample_entropy` |
+| Bandt & Pompe 2002, *Phys. Rev. Lett.* 88: 174102. Permutation entropy: a natural complexity measure for time series | [10.1103/PhysRevLett.88.174102](https://doi.org/10.1103/PhysRevLett.88.174102) | `permutation_entropy` |
+| Peng et al. 1994, *Phys. Rev. E* 49: 1685-1689. Mosaic organization of DNA nucleotides | [10.1103/PhysRevE.49.1685](https://doi.org/10.1103/PhysRevE.49.1685) | `dfa`: detrended fluctuation analysis |
+| Cilibrasi & Vitányi 2005, *IEEE Trans. Inf. Theory* 51: 1523-1545. Clustering by compression | [10.1109/TIT.2005.844059](https://doi.org/10.1109/TIT.2005.844059) | `compression_complexity`: compressed length from a real compressor as a computable approximation to Kolmogorov complexity |
+| Varley et al. 2020, *PLOS ONE* 15: e0223812 (also listed below) | [10.1371/journal.pone.0223812](https://doi.org/10.1371/journal.pone.0223812) | `hfd_hilbert`: Higuchi dimension of Hilbert-transformed BOLD |
+| Schartner et al. 2017, *Sci. Rep.* 7: 46421. Increased spontaneous MEG signal diversity for psychoactive doses of ketamine, LSD and psilocybin | [10.1038/srep46421](https://doi.org/10.1038/srep46421) | `lempel_ziv_hilbert`: Lempel-Ziv complexity of the Hilbert instantaneous amplitude |
 
 ## Choice of `k_max` for `hfd`
 

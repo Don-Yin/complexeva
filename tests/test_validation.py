@@ -46,3 +46,28 @@ def test_positive_integer_validation_returns_builtin_integer():
     assert value == 4 and type(value) is int
     with pytest.raises(ValueError, match="window.*>= 4.*3"):
         check_positive_int(3, "window", minimum=4)
+
+
+@pytest.mark.parametrize("stride", [1, 2, -1])
+def test_first_nonfinite_index_and_message(stride):
+    x = numpy.array([1.0, numpy.inf, numpy.nan, -numpy.inf, 2.0])[::stride]
+    first = int(numpy.flatnonzero(~numpy.isfinite(x))[0])
+    with pytest.raises(ValueError) as error:
+        as_finite_1d(x, "signal")
+    assert str(error.value) == f"signal must contain only finite values, got {x[first]!r} at index {first}"
+
+
+@pytest.mark.parametrize("dtype", [numpy.float64, numpy.float32, numpy.int16, numpy.bool_, ">f8"])
+def test_conversion_and_readonly_views(dtype):
+    x = numpy.arange(100).astype(dtype)[::-2]
+    x.flags.writeable = False
+    actual = as_finite_1d(x)
+    assert actual.dtype == numpy.float64
+    numpy.testing.assert_array_equal(actual, numpy.asarray(x, dtype=numpy.float64))
+
+
+def test_unaligned_array():
+    x = numpy.ndarray(10, dtype=numpy.float64, buffer=bytearray(81), offset=1)
+    x[:] = numpy.arange(10)
+    assert not x.flags.aligned
+    numpy.testing.assert_array_equal(as_finite_1d(x), x)

@@ -44,6 +44,24 @@ def test_matches_reference_on_random_strings():
         assert lempel_ziv(s) == reference_kaspar_schuster(s), s
 
 
+def test_matches_reference_on_every_short_word():
+    for n in range(2, 13):
+        for word in range(1 << n):
+            s = format(word, f"0{n}b")
+            assert lempel_ziv(s) == reference_kaspar_schuster(s), s
+
+
+def test_matches_reference_on_biased_periodic_and_repeated_strings():
+    rng = numpy.random.default_rng(7)
+    half = rng.integers(0, 2, 700)
+    cases = [rng.random(1500) < p for p in (0.01, 0.1, 0.9, 0.99)]
+    cases += [numpy.resize(rng.integers(0, 2, period), 1500) for period in (1, 2, 7, 64)]
+    cases += [numpy.concatenate([half, half]), numpy.concatenate([half, half[::-1], half])]
+    for bits in cases:
+        s = "".join("1" if bit else "0" for bit in bits)
+        assert lempel_ziv(s) == reference_kaspar_schuster(s), s[:40]
+
+
 @pytest.mark.parametrize("method", ["median", "mean", "diff"])
 def test_numeric_input_equals_binarised_string(method):
     x = numpy.random.default_rng(1).standard_normal(400)

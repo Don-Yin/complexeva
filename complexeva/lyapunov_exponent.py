@@ -1,12 +1,100 @@
-import numpy as np
+import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
 
-from ._validation import as_finite_1d, check_positive_int
+from ._validation import as_finite_1d, check_finite_real, check_positive_int
 
 
 @njit(cache=True)
-def _divergence(Y: NDArray[np.float64], min_tsep: int, trajectory_len: int) -> NDArray[np.float64]:
+def _nearest_neighbours(Y: NDArray[numpy.float64], min_tsep: int, n_traj: int) -> NDArray[numpy.int64]:
+    """Find the exact nearest neighbour of each of the first n_traj vectors outside the Theiler window.
+
+    Vectors are sorted by their first coordinate and scanned outward from each query. Consecutive sorted
+    ranks form blocks of about sqrt(n_traj); a block is skipped whole when all its time indices lie inside
+    the window or its bounding box is farther than the best distance, so a window that covers many close
+    sorted neighbours, as in a trending series, costs one test per block instead of one per point. The
+    sorted copy of the vectors makes the scan contiguous in memory.
+
+    Args:
+        Y: Delay-embedded orbit, with shape (number of vectors, embedding dimension).
+        min_tsep: Nonnegative Theiler window in samples; pairs at this distance or closer are excluded.
+        n_traj: Number of leading vectors that are both queries and candidates.
+
+    Returns:
+        Int64 array of neighbour indices; distance ties resolve to the lowest index.
+    """
+    m = Y.shape[1]
+    shift = (int(numpy.log2(n_traj)) + 1) // 2
+    size = 1 << shift
+    n_blocks = (n_traj + size - 1) >> shift
+    order = numpy.argsort(Y[:n_traj, 0])
+    points = Y[:n_traj][order]
+    first_index = numpy.full(n_blocks, n_traj)
+    last_index = numpy.full(n_blocks, -1)
+    box_low = numpy.full((n_blocks, m), numpy.inf)
+    box_high = numpy.full((n_blocks, m), -numpy.inf)
+    for rank in range(n_traj):
+        block = rank >> shift
+        first_index[block] = min(first_index[block], order[rank])
+        last_index[block] = max(last_index[block], order[rank])
+        for dimension in range(m):
+            box_low[block, dimension] = min(box_low[block, dimension], points[rank, dimension])
+            box_high[block, dimension] = max(box_high[block, dimension], points[rank, dimension])
+    neighbour = numpy.empty(n_traj, dtype=numpy.int64)
+    for rank in range(n_traj):
+        i = order[rank]
+        # The first eligible index supplies a bound and resolves all-zero ties.
+        first = 0 if i > min_tsep else i + min_tsep + 1
+        best = 0.0
+        for dimension in range(m):
+            delta = Y[i, dimension] - Y[first, dimension]
+            best += delta * delta
+        best_j = first if best < numpy.inf else -1
+        if best > 0:
+            for direction in (-1, 1):
+                position = rank + direction
+                edge = 0 if direction == 1 else size - 1
+                scanning = True
+                while scanning and 0 <= position < n_traj:
+                    block = position >> shift
+                    if (position & (size - 1)) == edge:
+                        skip = first_index[block] >= i - min_tsep and last_index[block] <= i + min_tsep
+                        if not skip:
+                            # Box distance is computed like d, so it never exceeds the distance of a member.
+                            bound = 0.0
+                            for dimension in range(m):
+                                gap = max(
+                                    box_low[block, dimension] - points[rank, dimension],
+                                    points[rank, dimension] - box_high[block, dimension],
+                                    0.0,
+                                )
+                                bound += gap * gap
+                            skip = bound > best
+                        if skip:
+                            position += direction * size
+                            continue
+                    stop = min((block + 1) << shift, n_traj) if direction == 1 else (block << shift) - 1
+                    while position != stop:
+                        j = order[position]
+                        delta = points[rank, 0] - points[position, 0]
+                        # Every farther point has at least this squared distance.
+                        if delta * delta > best:
+                            scanning = False
+                            break
+                        if abs(i - j) > min_tsep:
+                            d = 0.0
+                            for dimension in range(m):
+                                delta = points[rank, dimension] - points[position, dimension]
+                                d += delta * delta
+                            if d < best or (d == best and j < best_j):
+                                best, best_j = d, j
+                        position += direction
+        neighbour[i] = best_j
+    return neighbour
+
+
+@njit(cache=True)
+def _divergence(Y: NDArray[numpy.float64], min_tsep: int, trajectory_len: int) -> NDArray[numpy.float64]:
     """Compute the Rosenstein mean log distance at each trajectory step.
 
     Args:
@@ -19,33 +107,21 @@ def _divergence(Y: NDArray[np.float64], min_tsep: int, trajectory_len: int) -> N
         A step with no positive distances is represented by negative infinity.
     """
     n_traj = Y.shape[0] - trajectory_len + 1
-    neighbour = np.empty(n_traj, dtype=np.int64)
-    for i in range(n_traj):
-        best, best_j = np.inf, -1
-        for j in range(n_traj):
-            if abs(i - j) <= min_tsep:  # Theiler window: skip temporally close points
-                continue
-            d = 0.0
-            for dimension in range(Y.shape[1]):
-                delta = Y[i, dimension] - Y[j, dimension]
-                d += delta * delta
-            if d < best:
-                best, best_j = d, j
-        neighbour[i] = best_j
-    log_div = np.full(trajectory_len, -np.inf)
+    neighbour = _nearest_neighbours(Y, min_tsep, n_traj)
+    log_div = numpy.full(trajectory_len, -numpy.inf)
     for k in range(trajectory_len):
         total, count = 0.0, 0
         for i in range(n_traj):
-            d = np.sqrt(np.sum((Y[i + k] - Y[neighbour[i] + k]) ** 2))
+            d = numpy.sqrt(numpy.sum((Y[i + k] - Y[neighbour[i] + k]) ** 2))
             if d > 0:
-                total += np.log(d)
+                total += numpy.log(d)
                 count += 1
         if count > 0:
             log_div[k] = total / count
     return log_div
 
 
-def _mean_period(x: NDArray[np.float64]) -> int:
+def _mean_period(x: NDArray[numpy.float64]) -> int:
     """Estimate the period used for the default Theiler window.
 
     Args:
@@ -57,22 +133,22 @@ def _mean_period(x: NDArray[np.float64]) -> int:
     Raises:
         ValueError: If the signal has zero spectral power, so a default window is undefined.
     """
-    psd = np.abs(np.fft.rfft(x - x.mean())) ** 2
-    freqs = np.fft.rfftfreq(len(x))
-    power = np.sum(psd[1:])
+    psd = numpy.abs(numpy.fft.rfft(x - x.mean())) ** 2
+    freqs = numpy.fft.rfftfreq(len(x))
+    power = numpy.sum(psd[1:])
     if power == 0:
         raise ValueError(f"min_tsep cannot be inferred from constant data with value {x[0]!r}; set min_tsep explicitly")
-    return int(np.ceil(power / np.sum(freqs[1:] * psd[1:])))
+    return int(numpy.ceil(power / numpy.sum(freqs[1:] * psd[1:])))
 
 
 def lyapunov_exponent(
     data: ArrayLike,
-    tau: int | np.integer = 1,
-    m: int | np.integer = 2,
+    tau: int | numpy.integer = 1,
+    m: int | numpy.integer = 2,
     dt: float = 1.0,
-    min_tsep: int | np.integer | None = None,
-    trajectory_len: int | np.integer = 20,
-    fit_offset: int | np.integer = 0,
+    min_tsep: int | numpy.integer | None = None,
+    trajectory_len: int | numpy.integer = 20,
+    fit_offset: int | numpy.integer = 0,
 ) -> float:
     """Estimate the largest Lyapunov exponent by Rosenstein et al. (1993).
 
@@ -111,13 +187,7 @@ def lyapunov_exponent(
     fit_offset = check_positive_int(fit_offset, "fit_offset", minimum=0)
     if fit_offset > trajectory_len - 2:
         raise ValueError(f"fit_offset must be <= trajectory_len - 2 = {trajectory_len - 2}, got {fit_offset}")
-    if (
-        isinstance(dt, (bool, np.bool_))
-        or not isinstance(dt, (int, float, np.integer, np.floating))
-        or not np.isfinite(dt)
-        or dt <= 0
-    ):
-        raise ValueError(f"dt must be finite and > 0, got {dt!r}")
+    dt = check_finite_real(dt, "dt", allow_zero=False)
     if min_tsep is None:
         min_tsep = min(_mean_period(x), len(x) // 4)
     else:
@@ -129,11 +199,11 @@ def lyapunov_exponent(
             f"series too short: len(data)={len(x)} gives {n_traj} trajectories for m={m}, tau={tau}, "
             f"trajectory_len={trajectory_len}, min_tsep={min_tsep}; require at least {2 * min_tsep + 2}"
         )
-    Y = np.stack([x[i * tau : i * tau + n_vectors] for i in range(m)], axis=1)
+    Y = numpy.stack([x[i * tau : i * tau + n_vectors] for i in range(m)], axis=1)
     log_div = _divergence(Y, min_tsep, trajectory_len)
-    ks = np.arange(trajectory_len)[fit_offset:]
+    ks = numpy.arange(trajectory_len)[fit_offset:]
     log_div = log_div[fit_offset:]
-    finite = np.isfinite(log_div)
+    finite = numpy.isfinite(log_div)
     if finite.sum() < 2:
-        return -np.inf
-    return float(np.polyfit(ks[finite], log_div[finite], 1)[0] / dt)
+        return -numpy.inf
+    return float(numpy.polyfit(ks[finite], log_div[finite], 1)[0] / dt)

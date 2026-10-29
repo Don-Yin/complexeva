@@ -1,13 +1,22 @@
 import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
-from scipy.signal import hilbert
 
+from ._hilbert import hilbert_envelope
 from ._validation import as_finite_1d, check_positive_int
 
 
-@njit
-def compute_L_x(X: NDArray[numpy.float64], k_max: int) -> tuple[NDArray[numpy.float64], NDArray[numpy.float64]]:
+@njit(cache=True, fastmath={"reassoc"})
+def _curve_length(X: NDArray[numpy.float64], m: int, k: int, n_max: int) -> float:
+    """Sum nonnegative increments with reassociation, but without unsafe fast-math flags."""
+    total = 0.0
+    for i in range(1, n_max + 1):
+        total += numpy.abs(X[m + i * k] - X[m + (i - 1) * k])
+    return total
+
+
+@njit(cache=True)
+def _log_lengths(X: NDArray[numpy.float64], k_max: int) -> tuple[NDArray[numpy.float64], NDArray[numpy.float64]]:
     """Compute the log-coordinate pairs for the Higuchi regression.
 
     Args:
@@ -18,27 +27,25 @@ def compute_L_x(X: NDArray[numpy.float64], k_max: int) -> tuple[NDArray[numpy.fl
         Pair of float64 arrays of length k_max: log(1 / k) and log(mean_m L_m(k)), respectively.
     """
     N = len(X)
-    L = numpy.zeros(k_max)
-    x = numpy.zeros(k_max)
+    L = numpy.empty(k_max)
+    x = numpy.empty(k_max)
     for k in range(1, k_max + 1):
-        Lk = numpy.zeros(k)
+        Lk = 0.0
         for m in range(k):
             # Higuchi (1988): M = floor((N - m) / k) increments with 1-based m, i.e. (N - 1 - m) // k here
-            Lmk = 0.0
             n_max = (N - 1 - m) // k
-            for i in range(1, n_max + 1):
-                Lmk += numpy.abs(X[m + i * k] - X[m + (i - 1) * k])
+            Lmk = _curve_length(X, m, k, n_max)
             Lmk *= (N - 1) / (n_max * k)  # normalisation factor
-            Lk[m] = Lmk / k  # curve length L_m(k); without /k the slope is D - 1
-        L[k - 1] = numpy.log(Lk.mean())
+            Lk += Lmk / k  # curve length L_m(k); without /k the slope is D - 1
+        L[k - 1] = numpy.log(Lk / k)
         x[k - 1] = numpy.log(1.0 / k)
     return x, L
 
 
-@njit
+@njit(cache=True)
 def _hfd_core(X: NDArray[numpy.float64], k_max: int) -> float:
     """Least-squares slope of log L(k) on log(1/k), computed natively (faster than lstsq; exp_000_hfd_speed)."""
-    x, L = compute_L_x(X, k_max)
+    x, L = _log_lengths(X, k_max)
     dx = x - x.mean()
     return numpy.sum(dx * (L - L.mean())) / numpy.sum(dx * dx)
 
@@ -84,7 +91,4 @@ def hfd_hilbert(X: ArrayLike, k_max: int | numpy.integer = 10) -> float:
         ValueError: If X is empty or not a finite, real, one-dimensional signal, or k_max is outside
             the integer range accepted by hfd.
     """
-    X = as_finite_1d(X, "X")
-    if X.size == 0:
-        raise ValueError("X must contain at least one sample for the Hilbert transform, got len(X)=0")
-    return hfd(numpy.abs(numpy.asarray(hilbert(X))), k_max=k_max)
+    return hfd(hilbert_envelope(X, "X"), k_max=k_max)

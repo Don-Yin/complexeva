@@ -23,9 +23,18 @@ def reference_hfd(x, k_max):
 
 
 @pytest.mark.parametrize("seed", [0, 1, 2])
-def test_matches_literal_formula(seed):
-    x = numpy.random.default_rng(seed).standard_normal(500)
-    assert hfd(x, k_max=16) == pytest.approx(reference_hfd(x, 16), abs=1e-10)
+@pytest.mark.parametrize("scale", [1.0, 1e120, 1e-120])
+@pytest.mark.parametrize("family", ["white", "brown", "reversed"])
+def test_matches_literal_formula(seed, scale, family):
+    noise = numpy.random.default_rng(seed).standard_normal(500)
+    x = {"white": noise, "brown": noise.cumsum(), "reversed": noise[::-1]}[family] * scale
+    assert hfd(x, k_max=16) == pytest.approx(reference_hfd(x, 16), abs=1e-12)
+
+
+@pytest.mark.parametrize("x", [numpy.ones(100), numpy.tile([1e308, -1e308], 20)])
+def test_degenerate_lengths_give_nan(x):
+    # constant input has zero length; alternating extremes overflow to inf, which fast-math must not hide
+    assert numpy.isnan(hfd(x))
 
 
 def test_k_max_bounds():
@@ -66,9 +75,13 @@ def test_invalid_k_max_names_bad_value(measure, k_max):
     assert repr(k_max) in str(error.value)
 
 
-def test_hilbert_matches_explicit_envelope():
-    x = numpy.random.default_rng(7).standard_normal(100)
+@pytest.mark.parametrize("n", [20, 21, 99, 100, 257, 1000])
+def test_hilbert_matches_explicit_envelope(n):
+    x = numpy.random.default_rng(n).standard_normal(n)
+    original = x.copy()
+    x.flags.writeable = False
     assert hfd_hilbert(x) == hfd(numpy.abs(numpy.asarray(hilbert(x))))
+    numpy.testing.assert_array_equal(x, original)
 
 
 @pytest.mark.parametrize("measure", [hfd, hfd_hilbert])

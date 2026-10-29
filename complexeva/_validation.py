@@ -1,5 +1,18 @@
+import math
+from numbers import Real
+
 import numpy
+from numba import njit
 from numpy.typing import ArrayLike, NDArray
+
+
+@njit(cache=True)
+def _first_nonfinite(values: NDArray[numpy.float64]) -> int:
+    """Locate the first invalid sample without allocating a boolean mask."""
+    for index in range(len(values)):
+        if not numpy.isfinite(values[index]):
+            return index
+    return -1
 
 
 def as_finite_1d(x: ArrayLike, name: str = "x") -> NDArray[numpy.float64]:
@@ -13,9 +26,8 @@ def as_finite_1d(x: ArrayLike, name: str = "x") -> NDArray[numpy.float64]:
     if values.dtype.kind not in "biuf":
         raise ValueError(f"{name} must contain real numbers, got dtype {values.dtype} with values {values!r}")
     values = numpy.asarray(values, dtype=numpy.float64)
-    invalid = numpy.flatnonzero(~numpy.isfinite(values))
-    if invalid.size:
-        index = int(invalid[0])
+    index = _first_nonfinite(values)
+    if index >= 0:
         raise ValueError(f"{name} must contain only finite values, got {values[index]!r} at index {index}")
     return values
 
@@ -25,3 +37,17 @@ def check_positive_int(value: int | numpy.integer, name: str, minimum: int = 1) 
     if isinstance(value, (bool, numpy.bool_)) or not isinstance(value, (int, numpy.integer)) or value < minimum:
         raise ValueError(f"{name} must be an integer >= {minimum}, got {value!r}")
     return int(value)
+
+
+def check_finite_real(value: float | numpy.floating | numpy.integer, name: str, *, allow_zero: bool) -> float:
+    """Return a finite real parameter that is positive (or nonnegative) as a float, or raise ValueError."""
+    bound = ">= 0" if allow_zero else "> 0"
+    if isinstance(value, (bool, numpy.bool_)) or not isinstance(value, Real):
+        raise ValueError(f"{name} must be a finite real number {bound}, got {value!r}")  # noqa: TRY004
+    try:
+        number = float(value)
+    except OverflowError as error:
+        raise ValueError(f"{name} must be a finite real number {bound}, got {value!r}") from error
+    if not math.isfinite(number) or number < 0 or (number == 0 and not allow_zero):
+        raise ValueError(f"{name} must be a finite real number {bound}, got {value!r}")
+    return number

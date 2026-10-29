@@ -13,6 +13,5 @@ dev.py
 # copyrighted paper PDFs, kept locally only
 docs/papers/*.pdf
 
-# experiment outputs
-experiments/**/.results/
-experiments/**/.intermediates/
+# local experiments (experiments-convention); not published
+experiments/

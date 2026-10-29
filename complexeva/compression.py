@@ -1,10 +1,10 @@
 import zlib
 
-import numpy as np
+import numpy
 from numpy.typing import NDArray
 
 
-def compression_complexity(data: NDArray[np.generic]) -> float:
+def compression_complexity(data: NDArray[numpy.generic]) -> float:
     """Measure zlib-compressed size relative to the original array bytes.
 
     Args:

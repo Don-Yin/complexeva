@@ -1,17 +1,17 @@
 import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
-from scipy.signal import hilbert
 
+from ._hilbert import hilbert_envelope
 from ._validation import as_finite_1d
 
 
-@njit
-def lempel_ziv_core(binary_array: NDArray[numpy.int32]) -> int:
+@njit(cache=True)
+def _count_components(binary_array: NDArray[numpy.bool_]) -> int:
     """Count Kaspar-Schuster components with a linear-time suffix automaton.
 
     Args:
-        binary_array: One-dimensional int32 array containing only 0 and 1.
+        binary_array: One-dimensional array containing only 0/False and 1/True.
 
     Returns:
         Integer number of components, including a final unfinished copied component. The initial
@@ -20,18 +20,18 @@ def lempel_ziv_core(binary_array: NDArray[numpy.int32]) -> int:
     n = len(binary_array)
     if n < 2:
         return 1
-    # Native indices avoid int32 overflow; 10*n*sizeof(intp) bytes of workspace.
-    transitions = numpy.full((2 * n, 2), -1, dtype=numpy.intp)
-    link = numpy.full(2 * n, -1, dtype=numpy.intp)
-    length = numpy.zeros(2 * n, dtype=numpy.intp)
-    first_end = numpy.empty(2 * n, dtype=numpy.intp)
-    last, size = 0, 1
+    if n >= 2**30:
+        raise ValueError("binary sequence too long for int32 automaton states")
+    # int32 state ids: 2n states, 16n bytes of transitions plus 8n of links and lengths.
+    transitions = numpy.full((2 * n, 2), -1, dtype=numpy.int32)
+    link = numpy.full(2 * n, -1, dtype=numpy.int32)
+    length = numpy.zeros(2 * n, dtype=numpy.int32)
+    last, size, count, start = 0, 1, 1, 1
     for position in range(n):
         symbol = int(binary_array[position])
         current = size
         size += 1
         length[current] = length[last] + 1
-        first_end[current] = position
         previous = last
         while previous >= 0 and transitions[previous, symbol] < 0:
             transitions[previous, symbol] = current
@@ -46,7 +46,6 @@ def lempel_ziv_core(binary_array: NDArray[numpy.int32]) -> int:
                 clone = size
                 size += 1
                 length[clone] = length[previous] + 1
-                first_end[clone] = first_end[target]
                 link[clone] = link[target]
                 transitions[clone, 0] = transitions[target, 0]
                 transitions[clone, 1] = transitions[target, 1]
@@ -56,21 +55,15 @@ def lempel_ziv_core(binary_array: NDArray[numpy.int32]) -> int:
                 link[target] = clone
                 link[current] = clone
         last = current
-    position, count = 1, 1
-    while position < n:
-        state, matched = 0, 0
-        while position + matched < n:
-            state = transitions[state, int(binary_array[position + matched])]
-            matched += 1
-            # A prior start, not a prior end, preserves self-overlapping copies.
-            if first_end[state] - matched + 1 >= position:
-                break
-        position += matched
-        count += 1
-    return count
+        # The longest suffix seen earlier has length[link[last]]; a component ends once its
+        # own text exceeds it, which keeps self-overlapping copies.
+        if position + 1 - start > length[link[last]]:
+            count += 1
+            start = position + 1
+    return count + (start < n)
 
 
-def _binarize(time_series: ArrayLike, method: str) -> NDArray[numpy.int32]:
+def _binarize(time_series: ArrayLike, method: str) -> NDArray[numpy.bool_]:
     """Convert numeric samples to binary symbols for Lempel-Ziv counting.
 
     Args:
@@ -79,7 +72,7 @@ def _binarize(time_series: ArrayLike, method: str) -> NDArray[numpy.int32]:
             strictly increasing adjacent samples. Median thresholding follows doi:10.1101/2021.09.23.461002.
 
     Returns:
-        Int32 array of 0/1 symbols. Its length is len(time_series), or max(len(time_series) - 1, 0)
+        Boolean array of symbols. Its length is len(time_series), or max(len(time_series) - 1, 0)
         for "diff". An empty signal produces an empty array.
 
     Raises:
@@ -87,7 +80,7 @@ def _binarize(time_series: ArrayLike, method: str) -> NDArray[numpy.int32]:
     """
     vector = as_finite_1d(time_series, "time_series")
     if vector.size == 0 and method in ("diff", "mean", "median"):
-        return numpy.empty(0, dtype=numpy.int32)
+        return numpy.empty(0, dtype=numpy.bool_)
     if method == "diff":
         bits = numpy.diff(vector) > 0
     elif method == "mean":
@@ -96,7 +89,7 @@ def _binarize(time_series: ArrayLike, method: str) -> NDArray[numpy.int32]:
         bits = vector > numpy.median(vector)
     else:
         raise ValueError(f"method must be 'mean', 'median', or 'diff', got {method!r}")
-    return bits.astype(numpy.int32)
+    return bits
 
 
 def lempel_ziv(time_series: ArrayLike | str, method: str = "median", normalize: bool = False) -> int | float:
@@ -123,10 +116,10 @@ def lempel_ziv(time_series: ArrayLike | str, method: str = "median", normalize: 
     if isinstance(time_series, str):
         if any(c not in "01" for c in time_series):
             raise ValueError(f"time_series must be a binary string containing only '0' and '1', got {time_series!r}")
-        binary_array = numpy.array([int(c) for c in time_series], dtype=numpy.int32)
+        binary_array = numpy.array([c == "1" for c in time_series], dtype=numpy.bool_)
     else:
         binary_array = _binarize(time_series, method)
-    complexity = int(lempel_ziv_core(binary_array))
+    complexity = int(_count_components(binary_array))
     if not normalize:
         return complexity
     n = len(binary_array)
@@ -152,8 +145,4 @@ def lempel_ziv_hilbert(time_series: ArrayLike, method: str = "median", normalize
         ValueError: If time_series is empty or not a finite, real, one-dimensional signal, or the
             binarization method is unknown.
     """
-    time_series = as_finite_1d(time_series, "time_series")
-    if time_series.size == 0:
-        raise ValueError("time_series must contain at least one sample for the Hilbert transform, got len(time_series)=0")
-    envelope = numpy.abs(numpy.asarray(hilbert(time_series)))
-    return lempel_ziv(envelope, method=method, normalize=normalize)
+    return lempel_ziv(hilbert_envelope(time_series, "time_series"), method=method, normalize=normalize)
