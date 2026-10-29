@@ -33,6 +33,12 @@ complexeva.hfd(signal)  # any 1D array
 
 ![Normalized Lempel–Ziv complexity is low for a sine wave and near one for white noise, with signal excerpts alongside.](docs/figures/lz-sine-noise.png)
 
+## potential icons
+
+| A | B | C |
+|---|---|---|
+| <img src="docs/figures/logo/option-a.png" width="200" alt="icon option A"> | <img src="docs/figures/logo/option-b.png" width="200" alt="icon option B"> | <img src="docs/figures/logo/option-c.png" width="200" alt="icon option C"> |
+
 ## licence
 
 MIT
