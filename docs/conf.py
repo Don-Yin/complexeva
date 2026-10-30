@@ -14,7 +14,7 @@ extensions = [
     "sphinx_gallery.gen_gallery",
 ]
 myst_enable_extensions = ["html_image"]  # README icons are <img> tags with widths
-exclude_patterns = ["_build", "papers"]
+exclude_patterns = ["_build", "papers", "design.md"]  # design.md is a local, git-ignored decision log
 autodoc_typehints = "description"
 
 html_theme = "furo"

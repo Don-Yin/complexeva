@@ -8,5 +8,4 @@
 api
 auto_examples/index
 references
-design
 ```
