@@ -18,3 +18,8 @@ experiments/
 
 # experiment-only helpers shared by experiments/
 shared/
+
+# built documentation site
+docs/_build/
+docs/auto_examples/
+docs/sg_execution_times.rst

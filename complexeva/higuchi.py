@@ -78,7 +78,7 @@ def hfd(X: ArrayLike, k_max: int | numpy.integer = 10) -> float | NDArray[numpy.
             len(X) // 2, inclusive. Defaults to 10; report the chosen value with results.
 
     Returns:
-        Slope of log curve length against log inverse interval: approximately 1 for smooth signals,
+        Slope of log curve length against log inverse interval, approximately 1 for smooth signals,
         1.5 for Brownian motion, and 2 for white noise. The dimension of a constant signal is
         undefined and is returned as NaN. A float for one signal; for a batch, a float64 array of
         shape X.shape[:-1] whose entries equal hfd on each signal.

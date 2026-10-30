@@ -1,5 +1,7 @@
 # complexeva
 
+<img src="docs/figures/logo/banner.png" width="320" alt="complexeva logo">
+
 Fast, low-memory complexity measures for 1D time series (EEG, MEG, physiology).
 
 ```bash
@@ -59,12 +61,6 @@ Batches, against a loop of antropy calls (`NUMBA_NUM_THREADS` sets the thread co
 ![Higuchi fractal dimension follows the theoretical fBm dimension from 1.9 to 1.1 as the Hurst exponent increases.](docs/figures/hfd-fbm.png)
 
 ![Normalized Lempel–Ziv complexity is low for a sine wave and near one for white noise, with signal excerpts alongside.](docs/figures/lz-sine-noise.png)
-
-## potential icons
-
-| A | B | C |
-|---|---|---|
-| <img src="docs/figures/logo/option-a.png" width="200" alt="icon option A"> | <img src="docs/figures/logo/option-b.png" width="200" alt="icon option B"> | <img src="docs/figures/logo/option-c.png" width="200" alt="icon option C"> |
 
 ## licence
 

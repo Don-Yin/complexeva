@@ -21,6 +21,7 @@ classifiers = [
 
 [project.optional-dependencies]
 test = ["pytest"]
+docs = ["sphinx", "furo", "myst-parser", "sphinx-gallery", "mne", "matplotlib"]
 
 [project.urls]
 Homepage = "https://github.com/Don-Yin/complexeva"

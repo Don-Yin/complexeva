@@ -37,3 +37,4 @@
   - LZ uses the occurrence index above.
   - hfd and permutation_entropy run their batches serially in compiled code. Their remaining heap was the parallel runtime's fixed overhead, which cost more than their per-row work.
   All batches read 2D float64 rows with a unit time stride directly; other layouts are copied one row at a time.
+- Logo (Don, 2026-10-30): option A is the banner at the top of the README (`docs/figures/logo/banner.png`); option B is the square icon for avatars and social previews (`docs/figures/logo/icon.png`); option C is dropped.
