@@ -79,6 +79,34 @@ def test_batch_equals_each_signal_bitwise(shape, layout):
     numpy.testing.assert_array_equal(out, expected)
 
 
+@pytest.mark.parametrize("layout", ["windows", "F", "reversed", "stepped"])
+@pytest.mark.parametrize("k_max", [2, 10, 16])
+def test_batch_strided_rows_preserve_scalar_bits(layout, k_max):
+    rng = numpy.random.default_rng(72)
+    x = rng.normal(size=(8, 1000))
+    if layout == "windows":
+        x = numpy.lib.stride_tricks.sliding_window_view(rng.normal(size=1700), 1000)[::100]
+    elif layout == "F":
+        x = numpy.asfortranarray(x)
+    elif layout == "reversed":
+        x = x[:, ::-1]
+    else:
+        x = x[:, ::2]
+    original = x.copy()
+    x.flags.writeable = False
+    actual = numpy.asarray(hfd(x, k_max))
+    expected = numpy.array([hfd(row, k_max) for row in x])
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+    numpy.testing.assert_array_equal(x, original)
+
+
+def test_valid_nan_does_not_hide_later_nonfinite_input():
+    x = numpy.ones((3, 100))
+    x[1, 17] = numpy.inf
+    with pytest.raises(ValueError, match=r"finite.*index \(1, 17\)"):
+        hfd(x)
+
+
 def test_batch_constant_row_is_nan_and_others_unchanged():
     X = numpy.random.default_rng(2).standard_normal((3, 100))
     X[1] = 4.0

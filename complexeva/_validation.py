@@ -30,6 +30,26 @@ def as_real_float64(values: NDArray, name: str = "x") -> NDArray[numpy.float64]:
     return numpy.ascontiguousarray(values, dtype=numpy.float64)
 
 
+def as_kernel_readable(values: NDArray, name: str = "x") -> NDArray:
+    """Return values that Numba kernels can read in place, without copying the batch.
+
+    Native bool, int, uint, float32 and float64 keep their dtype and strides. Numba cannot read
+    float16, longdouble or non-native byte order, so those are converted to float64.
+    """
+    if values.dtype.isnative and (values.dtype.kind in "biu" or values.dtype.kind == "f" and values.dtype.itemsize in (4, 8)):
+        return values
+    return as_real_float64(values, name)
+
+
+def check_finite_rows(values: NDArray, bad: NDArray[numpy.int64], name: str = "x") -> None:
+    """Raise for the first row with a non-finite sample; bad[i] is its time index, or -1 if none."""
+    invalid = numpy.flatnonzero(bad >= 0)
+    if invalid.size:
+        row = int(invalid[0])
+        where = tuple(int(j) for j in numpy.unravel_index(row, values.shape[:-1])) + (int(bad[row]),)
+        raise ValueError(f"{name} must contain only finite values, got {values[where]!r} at index {where}")
+
+
 def as_finite_1d(x: ArrayLike, name: str = "x") -> NDArray[numpy.float64]:
     """Return a real, finite 1D float64 array; leave length checks to the caller."""
     values = as_array(x, name)

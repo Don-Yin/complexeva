@@ -100,8 +100,10 @@ def test_hilbert_variant_runs():
     assert lempel_ziv_hilbert(numpy.random.default_rng(2).standard_normal(500)) > 1
 
 
-@pytest.mark.parametrize("measure", [lempel_ziv, lempel_ziv_hilbert])
-@pytest.mark.parametrize("data", [numpy.array(1.0), numpy.ones((2, 10))])
+@pytest.mark.parametrize(
+    "measure, data",
+    [(lempel_ziv, numpy.array(1.0)), (lempel_ziv_hilbert, numpy.array(1.0)), (lempel_ziv_hilbert, numpy.ones((2, 10)))],
+)
 def test_invalid_shape_names_bad_shape(measure, data):
     with pytest.raises(ValueError, match=re.escape(str(data.shape))):
         measure(data)
@@ -130,3 +132,162 @@ def test_inputs_computed_in_float64(measure, dtype):
 
 def test_binary_string_ignores_method():
     assert lempel_ziv("0101", method="unused") == lempel_ziv("0101")
+
+
+@pytest.mark.parametrize("method", ["median", "mean", "diff"])
+@pytest.mark.parametrize("normalize", [False, True])
+@pytest.mark.parametrize("shape", [(4, 0), (4, 1), (4, 2), (2, 3, 261), (0, 8), (2, 0, 8)])
+def test_numeric_batch_bitwise_equals_1d(method, normalize, shape):
+    x = numpy.random.default_rng(20).standard_normal(shape)
+    if x.size:
+        x[0] = 0
+        if shape[0] > 1:
+            x[1] += 1000
+    actual = lempel_ziv(x, method=method, normalize=normalize)
+    assert isinstance(actual, numpy.ndarray)
+    dtype = numpy.float64 if normalize else numpy.int64
+    expected = numpy.array(
+        [lempel_ziv(x[index], method=method, normalize=normalize) for index in numpy.ndindex(shape[:-1])], dtype=dtype
+    )
+    assert actual.shape == shape[:-1]
+    assert actual.dtype == dtype
+    numpy.testing.assert_array_equal(actual.ravel().view(numpy.uint64), expected.view(numpy.uint64))
+
+
+@pytest.mark.parametrize("method", ["median", "mean", "diff"])
+@pytest.mark.parametrize("layout", ["C", "F", "strided", "readonly", "unaligned"])
+def test_batch_layout_preserves_1d_bits(method, layout):
+    x = numpy.random.default_rng(21).standard_normal((2, 3, 1000))
+    if layout == "F":
+        x = numpy.asfortranarray(x)
+    elif layout == "strided":
+        x = x[..., ::-2]
+    elif layout == "readonly":
+        x.flags.writeable = False
+    elif layout == "unaligned":
+        unaligned = numpy.ndarray(x.shape, dtype=numpy.float64, buffer=bytearray(x.nbytes + 1), offset=1)
+        unaligned[:] = x
+        x = unaligned
+    actual = lempel_ziv(x, method=method, normalize=True)
+    assert isinstance(actual, numpy.ndarray)
+    expected = numpy.array([lempel_ziv(x[index], method=method, normalize=True) for index in numpy.ndindex(x.shape[:-1])])
+    numpy.testing.assert_array_equal(actual.ravel().view(numpy.uint64), expected.view(numpy.uint64))
+
+
+@pytest.mark.parametrize(
+    "dtype", [numpy.bool_, numpy.int16, numpy.uint64, numpy.float16, numpy.float32, numpy.float64, numpy.longdouble, ">f8"]
+)
+@pytest.mark.parametrize("method", ["median", "mean", "diff"])
+def test_batch_dtypes_match_1d_float64_conversion(dtype, method):
+    x = numpy.asfortranarray(numpy.random.default_rng(22).uniform(0, 10, size=(2, 3, 32)).astype(dtype))
+    actual = lempel_ziv(x, method=method, normalize=True)
+    assert isinstance(actual, numpy.ndarray)
+    expected = numpy.array([lempel_ziv(x[index], method=method, normalize=True) for index in numpy.ndindex(x.shape[:-1])])
+    numpy.testing.assert_array_equal(actual.ravel().view(numpy.uint64), expected.view(numpy.uint64))
+
+
+@pytest.mark.parametrize("method", ["median", "mean", "diff"])
+def test_strided_window_batch_equals_each_window(method):
+    series = numpy.random.default_rng(23).standard_normal(4000)
+    x = numpy.lib.stride_tricks.sliding_window_view(series, 1000)[::100]
+    actual = lempel_ziv(x, method=method, normalize=True)
+    assert isinstance(actual, numpy.ndarray)
+    expected = numpy.array([lempel_ziv(row, method=method, normalize=True) for row in x])
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+
+
+@pytest.mark.parametrize("value", [numpy.nan, numpy.inf, -numpy.inf])
+@pytest.mark.parametrize("method", ["median", "mean", "diff"])
+def test_batch_nonfinite_names_full_index(value, method):
+    x = numpy.asfortranarray(numpy.ones((2, 3, 8)))
+    x[0, 1, 5] = value
+    x[1, 0, 0] = numpy.nan
+    with pytest.raises(ValueError, match="time_series.*finite") as error:
+        lempel_ziv(x, method=method)
+    assert str(value) in str(error.value)
+    assert "index (0, 1, 5)" in str(error.value)
+
+
+@pytest.mark.parametrize("data", [numpy.ones((2, 3), dtype=complex), [["0", "1"], ["1", "0"]], [[1], [2, 3]]])
+def test_invalid_numeric_batch(data):
+    with pytest.raises(ValueError, match="time_series"):
+        lempel_ziv(data)
+
+
+def test_batch_unknown_method_names_bad_value():
+    with pytest.raises(ValueError, match="method.*'mode'"):
+        lempel_ziv(numpy.ones((2, 8)), method="mode")
+
+
+@pytest.mark.parametrize("n", [63, 64, 65, 511, 512, 513, 8191, 8192, 8193])
+def test_packed_word_and_prefix_index_boundaries(n):
+    bits = numpy.random.default_rng(n).integers(0, 2, n)
+    word = "".join("1" if bit else "0" for bit in bits)
+    assert lempel_ziv(word) == reference_kaspar_schuster(word)
+
+
+@pytest.mark.parametrize("gap", [65534, 65535, 65536, 70000])
+def test_compact_occurrence_distances_do_not_wrap(gap):
+    bits = numpy.zeros(gap + 300, dtype=numpy.bool_)
+    bits[[0, 1, 4, gap, gap + 1, gap + 5, gap + 100, gap + 104]] = True
+    # Exact suffix-automaton fixture: the uint16 escape must not discard later occurrences.
+    word = "".join("1" if bit else "0" for bit in bits)
+    assert lempel_ziv(word) == 8
+    actual = lempel_ziv(numpy.array([bits], dtype=numpy.float64), method="mean")
+    assert isinstance(actual, numpy.ndarray)
+    assert actual[0] == 8
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 4, 9, 64, 261, 1000])
+def test_batch_median_selection_matches_numpy_with_ties_and_extremes(n):
+    x = numpy.random.default_rng(n).integers(-3, 4, size=(2, 3, n)).astype(numpy.float64)
+    x[0, 0] = numpy.finfo(numpy.float64).max
+    x[0, 1] = -numpy.finfo(numpy.float64).max
+    x[1, 0] = numpy.resize([-0.0, 0.0, numpy.nextafter(0.0, 1.0)], n)
+    x = x.transpose(1, 0, 2)[..., ::-1]
+    x.flags.writeable = False
+    original = x.copy()
+    with numpy.errstate(over="ignore", invalid="ignore"):
+        actual = lempel_ziv(x)
+        assert isinstance(actual, numpy.ndarray)
+        expected = numpy.array([lempel_ziv(x[index]) for index in numpy.ndindex(x.shape[:-1])])
+    numpy.testing.assert_array_equal(actual.ravel(), expected)
+    numpy.testing.assert_array_equal(x, original)
+
+
+@pytest.mark.parametrize("dtype", [numpy.float64, numpy.float32, numpy.uint64])
+@pytest.mark.parametrize("layout", ["C", "windows", "transposed_reversed"])
+def test_batch_reads_original_layout_without_float64_row_buffers(monkeypatch, dtype, layout):
+    import importlib
+
+    module = importlib.import_module("complexeva.lempel_ziv")
+    x = numpy.random.default_rng(24).integers(0, 16, size=(3, 2, 256)).astype(dtype)
+    if layout == "windows":
+        x = numpy.lib.stride_tricks.sliding_window_view(x[0, 0], 128)[::17]
+    elif layout == "transposed_reversed":
+        x = x.transpose(1, 0, 2)[..., ::-2]
+    x.flags.writeable = False
+    original = x.copy()
+    kernel = module._lz_chunk
+
+    def checked(values, *args):
+        assert values is x
+        return kernel(values, *args)
+
+    monkeypatch.setattr(module, "_lz_chunk", checked)
+    actual = lempel_ziv(x)
+    assert isinstance(actual, numpy.ndarray)
+    expected = numpy.array([lempel_ziv(x[index]) for index in numpy.ndindex(x.shape[:-1])])
+    numpy.testing.assert_array_equal(actual.ravel(), expected)
+    numpy.testing.assert_array_equal(x, original)
+
+
+@pytest.mark.parametrize("method", ["median", "mean", "diff"])
+@pytest.mark.parametrize("invalid", [numpy.nan, numpy.inf, -numpy.inf])
+@pytest.mark.filterwarnings("error")
+def test_nonfinite_order_with_transposed_negative_strides(method, invalid):
+    x = numpy.ones((3, 2, 256)).transpose(1, 0, 2)[..., ::-2]
+    x[0, 2, 99] = invalid
+    x[1, 0, 0] = invalid
+    with pytest.raises(ValueError, match=r"finite.*index \(0, 2, 99\)"):
+        lempel_ziv(x, method=method)

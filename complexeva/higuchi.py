@@ -1,9 +1,9 @@
 import numpy
-from numba import njit, prange
+from numba import njit
 from numpy.typing import ArrayLike, NDArray
 
 from ._hilbert import hilbert_envelope
-from ._validation import _first_nonfinite, as_array, as_real_float64, check_positive_int
+from ._validation import _first_nonfinite, as_array, as_finite_1d, as_kernel_readable, check_positive_int
 
 
 @njit(cache=True, fastmath={"reassoc"})
@@ -16,19 +16,12 @@ def _curve_length(X: NDArray[numpy.float64], m: int, k: int, n_max: int) -> floa
 
 
 @njit(cache=True)
-def _log_lengths(X: NDArray[numpy.float64], k_max: int) -> tuple[NDArray[numpy.float64], NDArray[numpy.float64]]:
-    """Compute the log-coordinate pairs for the Higuchi regression.
-
-    Args:
-        X: Validated one-dimensional float64 signal with at least 2 * k_max samples.
-        k_max: Largest integer interval, at least 2.
-
-    Returns:
-        Pair of float64 arrays of length k_max: log(1 / k) and log(mean_m L_m(k)), respectively.
-    """
+def _hfd_core(X: NDArray[numpy.float64], k_max: int, lengths: NDArray[numpy.float64] | None = None) -> float:
+    """Compute the same centered regression with one reusable length array."""
     N = len(X)
-    L = numpy.empty(k_max)
-    x = numpy.empty(k_max)
+    L = numpy.empty(k_max) if lengths is None else lengths
+    sum_x = 0.0
+    sum_L = 0.0
     for k in range(1, k_max + 1):
         Lk = 0.0
         for m in range(k):
@@ -38,29 +31,40 @@ def _log_lengths(X: NDArray[numpy.float64], k_max: int) -> tuple[NDArray[numpy.f
             Lmk *= (N - 1) / (n_max * k)  # normalisation factor
             Lk += Lmk / k  # curve length L_m(k); without /k the slope is D - 1
         L[k - 1] = numpy.log(Lk / k)
-        x[k - 1] = numpy.log(1.0 / k)
-    return x, L
+        sum_L += L[k - 1]
+        sum_x += numpy.log(1.0 / k)
+    mean_x = sum_x / k_max
+    mean_L = sum_L / k_max
+    numerator = 0.0
+    denominator = 0.0
+    for k in range(1, k_max + 1):
+        dx = numpy.log(1.0 / k) - mean_x
+        numerator += dx * (L[k - 1] - mean_L)
+        denominator += dx * dx
+    return numerator / denominator
 
 
 @njit(cache=True)
-def _hfd_core(X: NDArray[numpy.float64], k_max: int) -> float:
-    """Least-squares slope of log L(k) on log(1/k), computed natively (faster than lstsq; exp_000_hfd_speed)."""
-    x, L = _log_lengths(X, k_max)
-    dx = x - x.mean()
-    return numpy.sum(dx * (L - L.mean())) / numpy.sum(dx * dx)
-
-
-@njit(cache=True, parallel=True)
-def _hfd_rows(X: NDArray[numpy.float64], k_max: int) -> NDArray[numpy.float64]:
-    """Dimension of each row, in parallel over rows (4-7x a Python loop; exp_019_batch_1d).
-
-    Rows of a C-contiguous array are contiguous, so each row compiles to the same arithmetic as a
-    1D call and the result is identical bit for bit.
-    """
-    out = numpy.empty(X.shape[0])
-    for i in prange(X.shape[0]):
-        out[i] = _hfd_core(X[i], k_max)
-    return out
+def _hfd_rows(X: NDArray, direct: NDArray[numpy.float64] | None, k_max: int):
+    """Read contiguous rows in place, or reuse one float64 conversion buffer."""
+    n = X.shape[-1]
+    rows = X.size // n
+    out = numpy.empty(rows)
+    lengths = numpy.empty(k_max)
+    buffer = numpy.empty(n) if direct is None else None
+    for i in range(rows):
+        if direct is None:
+            assert buffer is not None
+            row = buffer
+            for j in range(n):
+                row[j] = X.flat[i * n + j]
+        else:
+            row = numpy.ascontiguousarray(direct[i])
+        bad = _first_nonfinite(row)
+        if bad >= 0:
+            return out, i, bad
+        out[i] = _hfd_core(row, k_max, lengths)
+    return out, -1, -1
 
 
 def hfd(X: ArrayLike, k_max: int | numpy.integer = 10) -> float | NDArray[numpy.float64]:
@@ -69,7 +73,7 @@ def hfd(X: ArrayLike, k_max: int | numpy.integer = 10) -> float | NDArray[numpy.
     Args:
         X: Finite, real-valued samples, converted to float64, with time on the last axis: one signal
             of shape (time,) or a batch such as (channels, time). Requires at least 2 * k_max samples.
-            A batch is computed in parallel over signals; set NUMBA_NUM_THREADS to limit threads.
+            Batch rows share one reusable workspace instead of allocating one per worker.
         k_max: Largest integer time interval included in the regression. Must be between 2 and
             len(X) // 2, inclusive. Defaults to 10; report the chosen value with results.
 
@@ -86,20 +90,23 @@ def hfd(X: ArrayLike, k_max: int | numpy.integer = 10) -> float | NDArray[numpy.
     values = as_array(X, "X")
     if values.ndim == 0:
         raise ValueError(f"X must have a time axis, got shape {values.shape}")
-    values = as_real_float64(values, "X")
-    index = _first_nonfinite(values.reshape(-1))
-    if index >= 0:
-        where = tuple(int(i) for i in numpy.unravel_index(index, values.shape))
-        raise ValueError(
-            f"X must contain only finite values, got {values.flat[index]!r} at index {where if values.ndim > 1 else index}"
-        )
+    values = as_finite_1d(values, "X") if values.ndim == 1 else as_kernel_readable(values, "X")
     n = values.shape[-1]
     k_max = check_positive_int(k_max, "k_max", minimum=2)
     if k_max > n // 2:
         raise ValueError(f"k_max must be between 2 and X.shape[-1] // 2 = {n // 2}, got {k_max}")
     if values.ndim == 1:
         return float(_hfd_core(values, k_max))
-    return _hfd_rows(values.reshape(-1, n), k_max).reshape(values.shape[:-1])
+    rows = values.size // n
+    readable_rows = values.dtype == numpy.float64 and (
+        values.flags.c_contiguous or values.ndim == 2 and values.strides[-1] == values.itemsize
+    )
+    direct = values.reshape(rows, n) if readable_rows else None
+    out, bad_row, bad_sample = _hfd_rows(values, direct, k_max)
+    if bad_row >= 0:
+        where = tuple(int(j) for j in numpy.unravel_index(bad_row, values.shape[:-1])) + (bad_sample,)
+        raise ValueError(f"X must contain only finite values, got {values[where]!r} at index {where}")
+    return out.reshape(values.shape[:-1])
 
 
 def hfd_hilbert(X: ArrayLike, k_max: int | numpy.integer = 10) -> float:

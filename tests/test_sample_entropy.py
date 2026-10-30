@@ -1,10 +1,11 @@
+import importlib
 import itertools
 
 import numpy
 import pytest
 
 from complexeva import sample_entropy
-from complexeva._sampen_tree import _tree_match_count
+from complexeva._sampen_tree import _build, _count, _tree_match_count, _tree_workspace_bytes
 from complexeva.sample_entropy import _TREE_MAX_ORDER, _TREE_MIN_TEMPLATES, _diagonal_match_counts, _match_counts
 
 
@@ -154,3 +155,161 @@ def test_tree_matches_diagonal_on_tied_and_clustered_series(order):
     clustered = rng.choice([-1.0, 1.0], 2 * _TREE_MIN_TEMPLATES) + 0.05 * rng.standard_normal(2 * _TREE_MIN_TEMPLATES)
     for x, tolerance in ((tied, 1.5), (clustered, 0.2)):
         assert _match_counts(x, order, tolerance) == _diagonal_match_counts(x, order, tolerance)
+
+
+@pytest.mark.parametrize("shape", [(6, 261), (2, 3, 1000), (1, 2, 1, 4100)])
+@pytest.mark.parametrize("order", [1, 2, 4, 5])
+@pytest.mark.parametrize("tolerance", [None, 0.0, 0.2, 1.0])
+def test_batch_is_bitwise_equal_to_1d_calls(shape, order, tolerance):
+    x = numpy.random.default_rng(4).normal(size=shape)
+    actual = sample_entropy(x, order=order, tolerance=tolerance)
+    expected = numpy.array([sample_entropy(row, order=order, tolerance=tolerance) for row in x.reshape(-1, shape[-1])]).reshape(
+        shape[:-1]
+    )
+    assert isinstance(actual, numpy.ndarray)
+    assert actual.shape == shape[:-1]
+    assert actual.dtype == numpy.float64
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+
+
+@pytest.mark.parametrize("layout", ["fortran", "strided", "readonly"])
+def test_batch_layouts_preserve_scalar_values(layout):
+    x = numpy.random.default_rng(5).normal(size=(2, 3, 500))
+    if layout == "fortran":
+        x = numpy.asfortranarray(x)
+    elif layout == "strided":
+        x = x[..., ::-2]
+    else:
+        x.flags.writeable = False
+    actual = sample_entropy(x)
+    assert isinstance(actual, numpy.ndarray)
+    expected = numpy.array([sample_entropy(row) for row in x.reshape(-1, x.shape[-1])]).reshape(x.shape[:-1])
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+
+
+def test_batch_default_tolerances_are_per_row():
+    x = numpy.random.default_rng(6).normal(size=(4, 400))
+    x *= numpy.array([1e-100, 0.01, 1.0, 1e100])[:, None]
+    x[0] = 1.0
+    actual = sample_entropy(x)
+    assert isinstance(actual, numpy.ndarray)
+    expected = numpy.array([sample_entropy(row, tolerance=0.2 * numpy.std(row, ddof=0)) for row in x])
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+    assert numpy.isnan(actual[0])
+    numpy.testing.assert_array_equal(sample_entropy(x[:1], tolerance=0.5), [-0.0])
+
+
+def test_batch_preserves_nan_inf_and_signed_zero():
+    x = numpy.array([[0, 1, 2, 3], [0, 0, 1, 2], [1, 1, 1, 1]])
+    actual = sample_entropy(x, order=1, tolerance=0.5)
+    assert isinstance(actual, numpy.ndarray)
+    expected = numpy.array([sample_entropy(row, order=1, tolerance=0.5) for row in x])
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+    assert numpy.isnan(actual[0]) and numpy.isinf(actual[1])
+    assert numpy.signbit(actual[2])
+
+
+@pytest.mark.parametrize("shape", [(0, 20), (2, 0, 20)])
+def test_empty_batch_keeps_leading_shape(shape):
+    result = sample_entropy(numpy.empty(shape))
+    assert isinstance(result, numpy.ndarray)
+    assert result.shape == shape[:-1]
+    assert result.dtype == numpy.float64
+
+
+@pytest.mark.parametrize("value", [numpy.nan, numpy.inf, -numpy.inf])
+def test_batch_nonfinite_error_has_full_first_index(value):
+    x = numpy.ones((2, 3, 10))
+    x[1, 0, 4] = value
+    x[1, 2, 0] = value
+    with pytest.raises(ValueError, match=r"finite.*index \(1, 0, 4\)"):
+        sample_entropy(x)
+
+
+@pytest.mark.parametrize("x", [1.0, numpy.empty((2, 0)), numpy.ones((2, 3)), [[1, 2], [3]], [[1j] * 10]])
+def test_invalid_batch_input_is_rejected(x):
+    with pytest.raises(ValueError):
+        sample_entropy(x)
+
+
+@pytest.mark.parametrize("tolerance", [-1, numpy.nan, numpy.inf, True, "0.2", 1j, 10**400])
+def test_batch_invalid_tolerance_is_rejected(tolerance):
+    with pytest.raises(ValueError, match="tolerance"):
+        sample_entropy(numpy.ones((2, 10)), tolerance=tolerance)
+
+
+def test_batch_has_no_axis_argument():
+    kwargs = {"axis": -1}
+    with pytest.raises(TypeError, match="axis"):
+        sample_entropy(numpy.ones((2, 10)), **kwargs)
+
+
+@pytest.mark.parametrize("layout", ["windows", "fortran", "reversed"])
+@pytest.mark.parametrize("order", [1, 2, 4])
+def test_direct_2d_views_match_contiguous_scalar_and_std(monkeypatch, layout, order):
+    module = importlib.import_module("complexeva.sample_entropy")
+    rng = numpy.random.default_rng(26)
+    if layout == "windows":
+        x = numpy.lib.stride_tricks.sliding_window_view(rng.normal(size=1000), 513)[::61]
+    else:
+        x = rng.normal(size=(6, 1026)) * 2**30 + 2**45
+        x = numpy.asfortranarray(x[:, :513]) if layout == "fortran" else x[:, ::-2]
+    x.flags.writeable = False
+    expected_tolerances = numpy.array([0.2 * numpy.std(numpy.ascontiguousarray(row), ddof=0) for row in x])
+    actual_tolerances = module._batch_tolerances(x)
+    numpy.testing.assert_array_equal(actual_tolerances.view(numpy.uint64), expected_tolerances.view(numpy.uint64))
+    kernel = module._match_counts_rows
+
+    def checked(values, direct, *args):
+        assert values is x
+        assert not args[-1]
+        assert numpy.shares_memory(direct, x)
+        return kernel(values, direct, *args)
+
+    monkeypatch.setattr(module, "_match_counts_rows", checked)
+    expected = numpy.array([sample_entropy(numpy.ascontiguousarray(row), order=order) for row in x])
+    actual = sample_entropy(x, order=order)
+    assert isinstance(actual, numpy.ndarray)
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+
+
+@pytest.mark.parametrize("n, dtype", [(65538, numpy.int32), (65539, numpy.int64)])
+def test_batch_count_width_uses_maximum_pair_count(monkeypatch, n, dtype):
+    module = importlib.import_module("complexeva.sample_entropy")
+    kernel = module._match_counts_rows
+    expected = (n - 2) * (n - 3) // 2
+
+    def checked(values, direct, order, tolerances, chunks, count_dtype, copy_rows):
+        assert count_dtype == dtype
+        counts = kernel(values, direct, order, tolerances, chunks, count_dtype, copy_rows)
+        numpy.testing.assert_array_equal(counts, numpy.full((2, 2), expected, dtype=dtype))
+        return counts
+
+    monkeypatch.setattr(module, "_match_counts_rows", checked)
+    numpy.testing.assert_array_equal(sample_entropy(numpy.ones((2, n)), tolerance=0.1), [-0.0, -0.0])
+
+
+@pytest.mark.parametrize("dtype", [numpy.int32, numpy.int64])
+def test_tree_index_width_does_not_narrow_pair_counts(dtype):
+    n = 100000
+    tree = _build(numpy.ones(n), 3, n - 2, 8, dtype)
+    assert all(array.dtype == dtype for array in tree[-3:])
+    assert _count(*tree, 0.1) == (n - 2) * (n - 3) // 2
+    if dtype == numpy.int32:
+        assert _tree_workspace_bytes(n - 2, 3) == sum(array.nbytes for array in tree) + (n - 2) * 4
+
+
+def test_batch_tree_budget_limits_active_rows_without_changing_thread_pool(monkeypatch):
+    module = importlib.import_module("complexeva.sample_entropy")
+    kernel = module._match_counts_rows
+    threads = module.get_num_threads()
+    n = 100000
+
+    def checked(values, direct, order, tolerances, chunks, count_dtype, copy_rows):
+        expected = min(16, threads, max(1, module._TREE_BATCH_BYTES // _tree_workspace_bytes(n - 2, 3)))
+        assert chunks == expected
+        return kernel(values, direct, order, tolerances, chunks, count_dtype, copy_rows)
+
+    monkeypatch.setattr(module, "_match_counts_rows", checked)
+    numpy.testing.assert_array_equal(sample_entropy(numpy.ones((16, n)), tolerance=0.1), numpy.zeros(16))
+    assert module.get_num_threads() == threads

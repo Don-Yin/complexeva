@@ -1,9 +1,12 @@
 # changelog
 
-## unreleased
+## 0.4.1 (2026-10-30)
 
-- `hfd` accepts a batch with time on the last axis, e.g. (channels, time), and returns one value per signal, computed in parallel and identical bit for bit to calling `hfd` on each signal (4-7x faster than a Python loop on windows and multichannel EEG).
-- Strided 1D input is copied to a contiguous array first, so every memory layout gives the same result.
+- `hfd`, `dfa`, `permutation_entropy`, `sample_entropy` and numeric `lempel_ziv` accept a batch with time on the last axis, e.g. (channels, time), and return one value per signal, identical bit for bit to the 1D call. `hfd_hilbert`, `lempel_ziv_hilbert`, string input, `lyapunov_exponent` and `compression_complexity` stay 1D.
+- `dfa` fits its slope with a centred two-pass least squares in compiled code instead of `numpy.polyfit`; against a 60-digit reference the worst error falls from 1.6e-9 to 3.0e-11.
+- `permutation_entropy` (orders 2-7) computes entropy in compiled code; values may change in the last bits (at most 5e-14).
+- Every memory layout gives the same result; batches are processed row by row without copying the whole input.
+- Leaner: a batch call uses less peak heap than a loop of antropy calls, on every measure and shape benchmarked. `dfa` no longer stores the profile; `sample_entropy` uses int32 tree indices and caps concurrent trees at 12 MiB; `lempel_ziv` uses a packed-bit occurrence index instead of a suffix automaton (about 4x less peak memory per signal at N = 100k; worst-case time is no longer linear); `hfd` and `permutation_entropy` batches run serially.
 
 ## 0.4.0 (2026-10-29)
 

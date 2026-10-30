@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "complexeva"
-version = "0.4.0"
+version = "0.4.1"
 description = "Complexity measures for 1D time series: Higuchi fractal dimension, Lempel-Ziv, compression, Lyapunov exponent"
 readme = "README.md"
 license = "MIT"

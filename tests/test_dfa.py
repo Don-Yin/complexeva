@@ -1,4 +1,5 @@
 import math
+from decimal import Decimal, localcontext
 from fractions import Fraction
 
 import numpy
@@ -99,8 +100,8 @@ def test_window_order_does_not_change_fit():
     assert dfa(x, nvals=[16, 4, 8]) == pytest.approx(dfa(x, nvals=[4, 8, 16]), abs=1e-12)
 
 
-def _exact_fluctuations(x, scales):
-    """RMS residual per window size with no rounding before the last two operations.
+def _exact_variances(x, scales):
+    """Pooled residual variance per window size, without rounding.
 
     Profile values are dyadic rationals, so prefix sums of y, m*y and y*y over a common power-of-two
     denominator are exact integers, and each window's least-squares residual is then an exact fraction.
@@ -129,14 +130,30 @@ def _exact_fluctuations(x, scales):
                 - Fraction(level * level, size)
                 - cross * cross * 12 / (size * (size * size - 1))
             )
-        out.append(math.sqrt(float(total / (count * size) / unit**2)))
-    return numpy.array(out)
+        out.append(total / (count * size) / unit**2)
+    return out
 
 
 def _exact_dfa(x, scales):
-    """The slope that complexeva fits to the exact fluctuations."""
-    scales = numpy.asarray(scales)
-    return numpy.polyfit(numpy.log(scales), numpy.log(_exact_fluctuations(x, scales)), 1)[0]
+    """Slope of exact rational fluctuations, with 60-digit logarithms and least squares.
+
+    A polyfit reference would reproduce its own SVD rounding, especially at adjacent scales,
+    rather than test the numerical accuracy of the implementation's final slope.
+    """
+    variances = _exact_variances(x, scales)
+    with localcontext() as context:
+        context.prec = 60
+        pairs = [
+            (Decimal(int(n)).ln(), (Decimal(v.numerator) / Decimal(v.denominator)).ln() / 2)
+            for n, v in zip(scales, variances)
+            if v > 0
+        ]
+        mean_x = sum((x for x, _ in pairs), Decimal(0)) / len(pairs)
+        mean_y = sum((y for _, y in pairs), Decimal(0)) / len(pairs)
+        return float(
+            sum(((x - mean_x) * (y - mean_y) for x, y in pairs), Decimal(0))
+            / sum(((x - mean_x) ** 2 for x, _ in pairs), Decimal(0))
+        )
 
 
 def _sensitivity(scales):
@@ -203,5 +220,91 @@ def test_integer_scales_and_immutable_views_match_exact_fluctuations(dtype):
     x.setflags(write=False)
     scales = numpy.array([64, 16, 8, 4], dtype=dtype)
     scales.setflags(write=False)
-    # Each dtype keeps its own log precision in the fit, in dfa and in the reference alike.
+    # Integer dtype must not lower logarithm precision (NumPy logs of int16 otherwise use float32).
     assert dfa(x, scales) == pytest.approx(_exact_dfa(x, scales), rel=0, abs=_rounding_bound(scales))
+
+
+@pytest.mark.parametrize("scales", [None, [4, 8, 32, 64], [998, 999]])
+def test_batch_matches_every_1d_call_bitwise(scales):
+    rng = numpy.random.default_rng(17)
+    rows = numpy.stack([make(rng, 1000) for make in SIGNALS] + [numpy.full(1000, 0.1)])
+    x = rows.reshape(2, 3, 1000)
+    expected = numpy.array([dfa(row, scales) for row in rows]).reshape(2, 3)
+    actual = dfa(x, scales)
+    assert isinstance(actual, numpy.ndarray)
+    assert actual.shape == x.shape[:-1]
+    assert actual.dtype == numpy.float64
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+
+
+@pytest.mark.parametrize("dtype", [numpy.bool_, numpy.int16, numpy.float32, numpy.float64])
+@pytest.mark.parametrize("layout", ["windows", "fortran", "reversed", "readonly", "transposed"])
+def test_batch_layouts_do_not_change_values_or_inputs(layout, dtype):
+    base = numpy.random.default_rng(18).standard_normal((3, 4, 200))
+    if dtype == numpy.bool_:
+        base = base > 0
+    else:
+        base = (128 * base).astype(dtype)
+    if layout == "windows":
+        x = numpy.lib.stride_tricks.sliding_window_view(base[0, 0], 100)[::13]
+    elif layout == "transposed":
+        x = base.transpose(1, 0, 2)[..., ::-2]
+    else:
+        x = base[0, :, :100]
+        if layout == "fortran":
+            x = numpy.asfortranarray(x)
+        elif layout == "reversed":
+            x = x[:, ::-1]
+        else:
+            x.setflags(write=False)
+    before = x.copy()
+    expected = numpy.array(
+        [dfa(numpy.ascontiguousarray(x[index], dtype=numpy.float64)) for index in numpy.ndindex(x.shape[:-1])]
+    ).reshape(x.shape[:-1])
+    actual = dfa(x)
+    assert isinstance(actual, numpy.ndarray)
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+    numpy.testing.assert_array_equal(x, before)
+
+
+@pytest.mark.parametrize("dtype", [numpy.bool_, numpy.int16, numpy.float32, numpy.float64])
+def test_batch_numeric_dtypes_and_singleton_batch(dtype):
+    x = numpy.random.default_rng(19).integers(0, 8, size=(1, 100)).astype(dtype)
+    result = dfa(x)
+    assert isinstance(result, numpy.ndarray)
+    assert result.shape == (1,)
+    assert isinstance(dfa(x[0]), float)
+    assert result.view(numpy.uint64)[0] == numpy.array(dfa(x[0])).view(numpy.uint64)
+
+
+@pytest.mark.parametrize("dtype", [numpy.int64, numpy.uint64])
+def test_batch_converts_integer_extremes_before_centering(dtype):
+    limits = numpy.iinfo(dtype)
+    pattern = numpy.array([limits.min, limits.max, limits.min + 1, limits.max - 1], dtype=dtype)
+    x = numpy.tile(pattern, (2, 25))[:, ::-1]
+    expected = numpy.array([dfa(numpy.ascontiguousarray(row, dtype=numpy.float64)) for row in x])
+    actual = dfa(x)
+    assert isinstance(actual, numpy.ndarray)
+    numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+
+
+@pytest.mark.parametrize("bad", [numpy.nan, numpy.inf, -numpy.inf])
+def test_batch_nonfinite_error_has_first_full_index(bad):
+    x = numpy.ones((2, 3, 100))
+    x[1, 0, 7] = bad
+    x[1, 2, 4] = bad
+    with pytest.raises(ValueError, match=r"finite.*index \(1, 0, 7\)"):
+        dfa(x)
+
+
+def test_empty_batch_keeps_leading_shape():
+    result = dfa(numpy.empty((2, 0, 100)))
+    assert isinstance(result, numpy.ndarray)
+    assert result.shape == (2, 0)
+    assert result.dtype == numpy.float64
+
+
+@pytest.mark.parametrize("x", [1.0, numpy.ones((2, 3, 0)), numpy.ones((2, 3, 5)), [[1j] * 100]])
+def test_invalid_batch_input_is_rejected(x):
+    with pytest.raises(ValueError, match="x"):
+        dfa(x)

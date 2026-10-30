@@ -15,3 +15,6 @@ docs/papers/*.pdf
 
 # local experiments (experiments-convention); not published
 experiments/
+
+# experiment-only helpers shared by experiments/
+shared/

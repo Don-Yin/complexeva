@@ -29,18 +29,18 @@ def _partition(x, permutation, start, stop, axis, target):
 
 
 @njit(cache=True)
-def _build(x, dimension, n, leafsize):
+def _build(x, dimension, n, leafsize, index_dtype=numpy.int32):
     """Build a balanced tree directly over x, copying only reordered rows."""
     leaves = 1
     while leaves * leafsize < n:
         leaves *= 2
     capacity = 2 * leaves - 1
-    permutation = numpy.arange(n)
+    permutation = numpy.arange(n, dtype=index_dtype)
     low = numpy.empty((capacity, dimension))
     high = numpy.empty_like(low)
     bounds = numpy.empty(capacity)
-    children = numpy.full(capacity, -1)
-    starts, stops = numpy.empty(capacity, dtype=numpy.int64), numpy.empty(capacity, dtype=numpy.int64)
+    children = numpy.full(capacity, -1, dtype=index_dtype)
+    starts, stops = numpy.empty(capacity, dtype=index_dtype), numpy.empty(capacity, dtype=index_dtype)
     starts[0], stops[0] = 0, n
     node, nodes = 0, 1
     while node < nodes:
@@ -96,7 +96,7 @@ def _count(points, low, high, bounds, children, starts, stops, tolerance):
                 inside = False
         if outside:
             continue
-        size_a, size_b = stops[a] - starts[a], stops[b] - starts[b]
+        size_a, size_b = numpy.int64(stops[a] - starts[a]), numpy.int64(stops[b] - starts[b])
         if inside:
             count += size_a * (size_a - 1) // 2 if a == b else size_a * size_b
             continue
@@ -125,11 +125,28 @@ def _count(points, low, high, bounds, children, starts, stops, tolerance):
             stack[pending, 0], stack[pending, 1] = a, children[b]
             stack[pending + 1, 0], stack[pending + 1, 1] = a, children[b] + 1
             pending += 2
-    return count
+    return int(count)
+
+
+@njit(cache=True)
+def _tree_count_typed(x, dimension, n, tolerance, index_dtype):
+    """Keep each tree's lifetime inside one call, independent of index width."""
+    ordered, low, high, bounds, children, starts, stops = _build(x, dimension, n, 8, index_dtype)
+    return _count(ordered, low, high, bounds, children, starts, stops, tolerance)
 
 
 @njit(cache=True)
 def _tree_match_count(x, dimension, n, tolerance):
-    """Count strict distinct-row matches in an embedding of exactly n rows."""
-    ordered, low, high, bounds, children, starts, stops = _build(x, dimension, n, 8)
-    return _count(ordered, low, high, bounds, children, starts, stops, tolerance)
+    """Use compact indices without narrowing pair counts or excluding large inputs."""
+    if n <= 2147483647:
+        return _tree_count_typed(x, dimension, n, tolerance, numpy.int32)
+    return _tree_count_typed(x, dimension, n, tolerance, numpy.int64)
+
+
+def _tree_workspace_bytes(n, dimension):
+    """Bound the build's live array bytes, including permutation and reordered points."""
+    leaves = 1
+    while leaves * 8 < n:
+        leaves *= 2
+    index_bytes = 4 if n <= 2147483647 else 8
+    return n * (8 * dimension + index_bytes) + (2 * leaves - 1) * (16 * dimension + 8 + 3 * index_bytes)
