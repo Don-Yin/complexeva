@@ -2,7 +2,7 @@ import numpy
 from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
-from ._sampen_tree import _tree_match_count, _tree_workspace_bytes
+from ._sampen_tree import _tree_match_counts, _tree_workspace_bytes
 from ._validation import as_signals, check_finite_real, check_positive_int, float64_rows
 
 _TREE_MIN_TEMPLATES = 4096  # An allocation-free scan beats tree setup on short series.
@@ -30,10 +30,7 @@ def _match_counts(x: NDArray[numpy.float64], order: int, tolerance: float) -> tu
     n_templates = len(x) - order
     if n_templates < _TREE_MIN_TEMPLATES or order > _TREE_MAX_ORDER:
         return _diagonal_match_counts(x, order, tolerance)
-    return (
-        _tree_match_count(x, order, n_templates, tolerance),
-        _tree_match_count(x, order + 1, n_templates, tolerance),
-    )
+    return _tree_match_counts(x, order, n_templates, tolerance)
 
 
 @njit(cache=True, parallel=True)

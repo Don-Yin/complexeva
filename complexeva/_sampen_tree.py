@@ -3,18 +3,20 @@
 import numpy
 from numba import njit
 
+_EXTENSION_SORT_MIN_PAIRS = 4096  # A sorted window scan pays off only for large matched blocks.
+
 
 @njit(cache=True)
-def _partition(x, permutation, start, stop, axis, target):
+def _partition(x, permutation, start, stop, axis, target, delay=1):
     """Partition an index range around its median without copying vectors."""
     low, high = start, stop - 1
     while low < high:
-        pivot = x[permutation[(low + high) // 2] + axis]
+        pivot = x[permutation[(low + high) // 2] + axis * delay]
         i, j = low, high
         while i <= j:
-            while x[permutation[i] + axis] < pivot:
+            while x[permutation[i] + axis * delay] < pivot:
                 i += 1
-            while x[permutation[j] + axis] > pivot:
+            while x[permutation[j] + axis * delay] > pivot:
                 j -= 1
             if i <= j:
                 permutation[i], permutation[j] = permutation[j], permutation[i]
@@ -29,13 +31,14 @@ def _partition(x, permutation, start, stop, axis, target):
 
 
 @njit(cache=True)
-def _build(x, dimension, n, leafsize, index_dtype=numpy.int32):
-    """Build a balanced tree directly over x, copying only reordered rows."""
+def _build(x, dimension, n, leafsize, index_dtype=numpy.int32, delay=1, extra=False):
+    """Split on dimension coordinates, optionally retaining one extension coordinate."""
     leaves = 1
     while leaves * leafsize < n:
         leaves *= 2
     capacity = 2 * leaves - 1
     permutation = numpy.arange(n, dtype=index_dtype)
+    coordinates = dimension + extra
     low = numpy.empty((capacity, dimension))
     high = numpy.empty_like(low)
     bounds = numpy.empty(capacity)
@@ -46,9 +49,9 @@ def _build(x, dimension, n, leafsize, index_dtype=numpy.int32):
     while node < nodes:
         start, stop = starts[node], stops[node]
         for k in range(dimension):
-            lower = upper = x[permutation[start] + k]
+            lower = upper = x[permutation[start] + k * delay]
             for i in range(start + 1, stop):
-                value = x[permutation[i] + k]
+                value = x[permutation[i] + k * delay]
                 lower = min(lower, value)
                 upper = max(upper, value)
             low[node, k], high[node, k] = lower, upper
@@ -59,22 +62,70 @@ def _build(x, dimension, n, leafsize, index_dtype=numpy.int32):
         bounds[node] = high[node, axis] - low[node, axis]
         if stop - start > leafsize and bounds[node] != 0:
             middle = (start + stop) // 2
-            _partition(x, permutation, start, stop, axis, middle)
+            _partition(x, permutation, start, stop, axis, middle, delay)
             children[node] = nodes
             starts[nodes], stops[nodes] = start, middle
             starts[nodes + 1], stops[nodes + 1] = middle, stop
             nodes += 2
         node += 1
-    points = numpy.empty((n, dimension))
+    points = numpy.empty((n, coordinates))
     for i in range(n):
-        for k in range(dimension):
-            points[i, k] = x[permutation[i] + k]
+        for k in range(coordinates):
+            points[i, k] = x[permutation[i] + k * delay]
     return points, low, high, bounds, children, starts, stops
 
 
 @njit(cache=True)
-def _count(points, low, high, bounds, children, starts, stops, tolerance):
-    """Visit disjoint unordered node pairs, pruning with strict bounds."""
+def _sorted_extension_count(points, first_a, stop_a, first_b, stop_b, same, tolerance, dimension):
+    """Count a dense one-coordinate block with sorted, strict sliding windows."""
+    a = numpy.sort(points[first_a:stop_a, dimension])
+    b = a if same else numpy.sort(points[first_b:stop_b, dimension])
+    left, right, count = 0, 0, 0
+    for i in range(len(a)):
+        while left < len(b) and a[i] - b[left] >= tolerance:
+            left += 1
+        if same:
+            count += i - left
+        else:
+            while right < len(b) and b[right] - a[i] < tolerance:
+                right += 1
+            count += right - left
+    return count
+
+
+@njit(cache=True)
+def _extension_count(points, first_a, stop_a, first_b, stop_b, same, tolerance, dimension):
+    """Scan only the extension coordinate after the base box is wholly matched."""
+    low_a = high_a = points[first_a, dimension]
+    for i in range(first_a + 1, stop_a):
+        low_a = min(low_a, points[i, dimension])
+        high_a = max(high_a, points[i, dimension])
+    low_b, high_b = low_a, high_a
+    if not same:
+        low_b = high_b = points[first_b, dimension]
+        for j in range(first_b + 1, stop_b):
+            low_b = min(low_b, points[j, dimension])
+            high_b = max(high_b, points[j, dimension])
+    if low_a - high_b >= tolerance or low_b - high_a >= tolerance:
+        return 0
+    if high_a - low_b < tolerance and high_b - low_a < tolerance:
+        size_a, size_b = numpy.int64(stop_a - first_a), numpy.int64(stop_b - first_b)
+        return size_a * (size_a - 1) // 2 if same else size_a * size_b
+    if (stop_a - first_a) * (stop_b - first_b) >= _EXTENSION_SORT_MIN_PAIRS:
+        return _sorted_extension_count(points, first_a, stop_a, first_b, stop_b, same, tolerance, dimension)
+    count = 0
+    for i in range(first_a, stop_a):
+        start = i + 1 if same else first_b
+        value = points[i, dimension]
+        for j in range(start, stop_b):
+            count += abs(value - points[j, dimension]) < tolerance
+    return count
+
+
+@njit(cache=True)
+def _count_matches(points, low, high, bounds, children, starts, stops, tolerance, dimension):
+    """Count base matches and their extension subset in one unordered pair traversal."""
+    extra = dimension < points.shape[1]
     # A depth-first pair traversal uses O(tree depth), not O(node count), slots.
     depth, nodes = 1, len(starts)
     while nodes > 1:
@@ -83,12 +134,12 @@ def _count(points, low, high, bounds, children, starts, stops, tolerance):
     stack = numpy.empty((4 * depth, 2), dtype=numpy.int64)
     stack[0, 0], stack[0, 1] = 0, 0
     pending = 1
-    count = 0
+    count_m, count_m1 = 0, 0
     while pending:
         pending -= 1
         a, b = stack[pending, 0], stack[pending, 1]
         inside, outside = True, False
-        for k in range(points.shape[1]):
+        for k in range(dimension):
             if low[a, k] - high[b, k] >= tolerance or low[b, k] - high[a, k] >= tolerance:
                 outside = True
                 break
@@ -98,7 +149,9 @@ def _count(points, low, high, bounds, children, starts, stops, tolerance):
             continue
         size_a, size_b = numpy.int64(stops[a] - starts[a]), numpy.int64(stops[b] - starts[b])
         if inside:
-            count += size_a * (size_a - 1) // 2 if a == b else size_a * size_b
+            count_m += size_a * (size_a - 1) // 2 if a == b else size_a * size_b
+            if extra:
+                count_m1 += _extension_count(points, starts[a], stops[a], starts[b], stops[b], a == b, tolerance, dimension)
             continue
         leaf_a, leaf_b = children[a] == -1, children[b] == -1
         if leaf_a and leaf_b:
@@ -107,9 +160,11 @@ def _count(points, low, high, bounds, children, starts, stops, tolerance):
                 for j in range(start, stops[b]):
                     # Branch-free: an early exit mispredicts on about half of the leaf pairs.
                     match = True
-                    for k in range(points.shape[1]):
+                    for k in range(dimension):
                         match &= abs(points[i, k] - points[j, k]) < tolerance
-                    count += match
+                    count_m += match
+                    if extra:
+                        count_m1 += match & (abs(points[i, dimension] - points[j, dimension]) < tolerance)
             continue
         if a == b:
             left, right = children[a], children[a] + 1
@@ -125,22 +180,36 @@ def _count(points, low, high, bounds, children, starts, stops, tolerance):
             stack[pending, 0], stack[pending, 1] = a, children[b]
             stack[pending + 1, 0], stack[pending + 1, 1] = a, children[b] + 1
             pending += 2
-    return int(count)
+    return int(count_m), int(count_m1)
 
 
 @njit(cache=True)
-def _tree_count_typed(x, dimension, n, tolerance, index_dtype):
+def _count(points, low, high, bounds, children, starts, stops, tolerance):
+    """Count one embedding dimension using the shared strict-bound traversal."""
+    return _count_matches(points, low, high, bounds, children, starts, stops, tolerance, points.shape[1])[0]
+
+
+@njit(cache=True)
+def _tree_count_typed(x, dimension, n, tolerance, index_dtype, delay=1, extra=False):
     """Keep each tree's lifetime inside one call, independent of index width."""
-    ordered, low, high, bounds, children, starts, stops = _build(x, dimension, n, 8, index_dtype)
-    return _count(ordered, low, high, bounds, children, starts, stops, tolerance)
+    ordered, low, high, bounds, children, starts, stops = _build(x, dimension, n, 8, index_dtype, delay, extra)
+    return _count_matches(ordered, low, high, bounds, children, starts, stops, tolerance, dimension)
 
 
 @njit(cache=True)
-def _tree_match_count(x, dimension, n, tolerance):
+def _tree_match_count(x, dimension, n, tolerance, delay=1):
     """Use compact indices without narrowing pair counts or excluding large inputs."""
     if n <= 2147483647:
-        return _tree_count_typed(x, dimension, n, tolerance, numpy.int32)
-    return _tree_count_typed(x, dimension, n, tolerance, numpy.int64)
+        return _tree_count_typed(x, dimension, n, tolerance, numpy.int32, delay)[0]
+    return _tree_count_typed(x, dimension, n, tolerance, numpy.int64, delay)[0]
+
+
+@njit(cache=True)
+def _tree_match_counts(x, dimension, n, tolerance, delay=1):
+    """Build one tree for the common templates and count both embedding lengths."""
+    if n <= 2147483647:
+        return _tree_count_typed(x, dimension, n, tolerance, numpy.int32, delay, True)
+    return _tree_count_typed(x, dimension, n, tolerance, numpy.int64, delay, True)
 
 
 def _tree_workspace_bytes(n, dimension):

@@ -1,5 +1,10 @@
 # changelog
 
+## 0.6.1 (2026-10-31)
+
+- `multiscale_entropy(x, method="modified")` computes modified multiscale entropy (Wu et al. 2013). It follows the paper's equations; NeuroKit2 and EntropyHub use other conventions, so their raw values differ.
+- Faster `sample_entropy` and `multiscale_entropy`: one search tree counts both template lengths (100k SampEn 1.24x faster, 10% lower peak), and `multiscale_entropy` batches run in parallel (2-9x faster). Outputs are unchanged bit for bit.
+
 ## 0.6.0 (2026-10-31)
 
 - New measures, each batched like the others and checked against every package that implements it: `approximate_entropy`, `multiscale_entropy`, `fuzzy_entropy`, `katz_fd`, `petrosian_fd`, `hjorth`, `spectral_entropy`, `svd_entropy`, `correlation_dimension`.
