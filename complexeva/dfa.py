@@ -4,7 +4,7 @@ import numpy
 from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
-from ._validation import _first_nonfinite, as_array, as_finite_1d, as_kernel_readable, check_finite_rows
+from ._validation import as_signals
 
 _RUN = 32  # squares summed plainly per run before the compensated combination
 _SPLIT = 134217729.0  # 2**27 + 1: Veltkamp constant that splits a float64 into two 26-bit halves
@@ -114,22 +114,13 @@ def _dfa_rows(
     n = values.shape[-1]
     rows = values.size // n
     out = numpy.empty(rows)
-    bad = numpy.empty(rows, dtype=numpy.int64)
     for chunk in prange(chunks):
         for i in range(rows * chunk // chunks, rows * (chunk + 1) // chunks):
             if flat_rows:
-                bad[i] = -1
-                for j in range(n):
-                    if not numpy.isfinite(values.flat[i * n + j]):
-                        bad[i] = j
-                        break
-                if bad[i] < 0:
-                    out[i] = _dfa_core(values, scales, log_scales, i * n, n)
+                out[i] = _dfa_core(values, scales, log_scales, i * n, n)
             else:
-                bad[i] = _first_nonfinite(direct[i])
-                if bad[i] < 0:
-                    out[i] = _dfa_core(direct[i], scales, log_scales)
-    return out, bad
+                out[i] = _dfa_core(direct[i], scales, log_scales)
+    return out
 
 
 def dfa(x: ArrayLike, nvals: ArrayLike | None = None) -> float | NDArray[numpy.float64]:
@@ -166,10 +157,7 @@ def dfa(x: ArrayLike, nvals: ArrayLike | None = None) -> float | NDArray[numpy.f
         This is DFA-1 (Peng et al., 1994); it also matches nolds.dfa with the
         same nvals, overlap=False, order=1 and both fits set to "poly".
     """
-    values = as_array(x)
-    if values.ndim == 0:
-        raise ValueError(f"x must have a time axis, got shape {values.shape}")
-    values = as_finite_1d(values) if values.ndim == 1 else as_kernel_readable(values)
+    values = as_signals(x)
     n = values.shape[-1]
     if n < 6:
         raise ValueError(f"x needs at least 6 samples for two window sizes, got {n}")
@@ -200,6 +188,5 @@ def dfa(x: ArrayLike, nvals: ArrayLike | None = None) -> float | NDArray[numpy.f
         direct = values
     else:
         direct = numpy.empty((0, 0)) if flat_rows else values.reshape(rows, n)
-    out, bad = _dfa_rows(values, direct, scales, log_scales, min(rows, get_num_threads()), flat_rows)
-    check_finite_rows(values, bad)
+    out = _dfa_rows(values, direct, scales, log_scales, min(rows, get_num_threads()), flat_rows)
     return out.reshape(values.shape[:-1])

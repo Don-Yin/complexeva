@@ -49,7 +49,7 @@ def test_dt_scales_result():
 
 
 def test_too_short_raises():
-    with pytest.raises(ValueError, match=r"len\(data\)=10.*min_tsep=5"):
+    with pytest.raises(ValueError, match=r"len\(x\)=10.*min_tsep=5"):
         lyapunov_exponent(numpy.arange(10.0), min_tsep=5)
 
 
@@ -226,3 +226,8 @@ def test_ties_with_different_futures_and_boundary_feasibility():
     x = numpy.arange(80.0)
     y = numpy.stack((x[:-1], x[1:]), axis=1)
     numpy.testing.assert_array_equal(_divergence(y, 29, 20), reference_divergence(y, 29, 20))
+
+
+def test_single_sample_names_length():
+    with pytest.raises(ValueError, match=r"len\(x\)=1"):
+        lyapunov_exponent([1.0])

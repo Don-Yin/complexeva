@@ -3,15 +3,7 @@ from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
 from ._sampen_tree import _tree_match_count, _tree_workspace_bytes
-from ._validation import (
-    _first_nonfinite,
-    as_array,
-    as_finite_1d,
-    as_kernel_readable,
-    check_finite_real,
-    check_finite_rows,
-    check_positive_int,
-)
+from ._validation import as_signals, check_finite_real, check_positive_int
 
 _TREE_MIN_TEMPLATES = 4096  # An allocation-free scan beats tree setup on short series.
 _TREE_MAX_ORDER = 4  # Bound tree storage and avoid ineffective high-dimensional pruning.
@@ -68,22 +60,19 @@ def _match_counts_rows(
                     row[j] = values.flat[i * n + j]
             else:
                 row = direct[i]
-            bad = _first_nonfinite(row)
-            if bad >= 0:
-                counts[i, 0] = -bad - 1  # Counts are nonnegative, so invalid positions need no extra array.
-            elif tolerances[i] != 0 and numpy.isfinite(tolerances[i]):
+            if tolerances[i] != 0 and numpy.isfinite(tolerances[i]):
                 counts[i, 0], counts[i, 1] = _match_counts(row, order, tolerances[i])
     return counts
 
 
 def _batch_tolerances(values: NDArray) -> NDArray[numpy.float64]:
-    """Reduce contiguous float64 rows exactly as 1D; leave invalid rows for the full-index error."""
+    """Reduce contiguous float64 rows exactly as 1D."""
     tolerances = numpy.empty(int(numpy.prod(values.shape[:-1], dtype=numpy.intp)))
     for i in range(len(tolerances)):
         # ndindex materializes each range as a tuple; avoid its O(rows) Python-integer pool.
         index = i if values.ndim == 2 else numpy.unravel_index(i, values.shape[:-1])
         row = numpy.ascontiguousarray(values[index], dtype=numpy.float64)
-        tolerances[i] = 0.2 * numpy.std(row, ddof=0) if _first_nonfinite(row) < 0 else numpy.nan
+        tolerances[i] = 0.2 * numpy.std(row, ddof=0)
     return tolerances
 
 
@@ -138,10 +127,7 @@ def sample_entropy(
         This is the Richman and Moorman (2000) sample entropy definition, with the
         same default tolerance as antropy.sample_entropy.
     """
-    values = as_array(x)
-    if values.ndim == 0:
-        raise ValueError(f"x must have a time axis, got shape {values.shape}")
-    values = as_finite_1d(values) if values.ndim == 1 else as_kernel_readable(values)
+    values = as_signals(x)
     order = check_positive_int(order, "order")
     n = values.shape[-1]
     if n < order + 2:
@@ -166,8 +152,6 @@ def sample_entropy(
     templates = n - order
     count_dtype = numpy.int32 if n <= 2147483647 and templates * (templates - 1) // 2 <= 2147483647 else numpy.int64
     counts = _match_counts_rows(values, direct, order, tolerances, chunks, count_dtype, copy_rows)
-    if rows and numpy.min(counts[:, 0]) < 0:
-        check_finite_rows(values, numpy.where(counts[:, 0] < 0, -counts[:, 0] - 1, -1))
     invalid_tolerances = tolerances[~numpy.isfinite(tolerances)]
     if invalid_tolerances.size:
         check_finite_real(float(invalid_tolerances[0]), "tolerance", allow_zero=True)

@@ -4,7 +4,7 @@ import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
 
-from ._validation import _first_nonfinite, as_array, as_finite_1d, as_kernel_readable, check_positive_int
+from ._validation import as_signals, check_positive_int, unit_stride_rows
 
 _MAX_HISTOGRAM_ORDER = 7  # Bound the histogram to 7! int64 bins (40,320 bytes).
 
@@ -61,7 +61,7 @@ def _make_permutation_rows(counter):
                 row = buffer
             else:
                 row = direct[i]
-            out[i] = numpy.nan if _first_nonfinite(row) >= 0 else _entropy_from_counts(counter(row, delay), divisor)
+            out[i] = _entropy_from_counts(counter(row, delay), divisor)
         return out
 
     return rows
@@ -113,10 +113,7 @@ def permutation_entropy(
         integer hash that can overflow. This implements Bandt and Pompe (2002)
         permutation entropy, as in antropy.perm_entropy.
     """
-    values = as_array(x)
-    if values.ndim == 0:
-        raise ValueError(f"x must have a time axis, got shape {values.shape}")
-    values = as_finite_1d(values) if values.ndim == 1 else as_kernel_readable(values)
+    values = as_signals(x)
     order = check_positive_int(order, "order", minimum=2)
     delay = check_positive_int(delay, "delay")
     window = (order - 1) * delay + 1
@@ -128,24 +125,12 @@ def permutation_entropy(
         if order <= _MAX_HISTOGRAM_ORDER:
             return float(_entropy_from_counts(_PERMUTATION_COUNTERS[order](values, delay), divisor))
         return _large_order_entropy(values, order, delay, divisor)
-    count = values.size // n
     if order <= _MAX_HISTOGRAM_ORDER:
-        readable_rows = values.dtype == numpy.float64 and (
-            values.flags.c_contiguous or values.ndim == 2 and values.strides[-1] == values.itemsize
-        )
-        direct = values.reshape(count, n) if readable_rows else None
-        out = _PERMUTATION_ROWS[order](values, direct, delay, divisor)
+        out = _PERMUTATION_ROWS[order](values, unit_stride_rows(values), delay, divisor)
     else:
         # NumPy's arbitrary-order counting remains serial, with only a single row converted at a time.
-        out = numpy.empty(count)
+        out = numpy.empty(values.size // n)
         for i, index in enumerate(numpy.ndindex(values.shape[:-1])):
             row = numpy.ascontiguousarray(values[index], dtype=numpy.float64)
-            out[i] = numpy.nan if _first_nonfinite(row) >= 0 else _large_order_entropy(row, order, delay, divisor)
-    # Finite inputs always have finite entropy; NaN is also the invalid-row sentinel.
-    bad_row = _first_nonfinite(out)
-    if bad_row >= 0:
-        index = tuple(int(j) for j in numpy.unravel_index(bad_row, values.shape[:-1]))
-        bad = _first_nonfinite(values[index])
-        where = index + (bad,)
-        raise ValueError(f"x must contain only finite values, got {values[where]!r} at index {where}")
+            out[i] = _large_order_entropy(row, order, delay, divisor)
     return out.reshape(values.shape[:-1])

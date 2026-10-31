@@ -4,8 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "complexeva"
-version = "0.4.1"
-description = "Complexity measures for 1D time series: Higuchi fractal dimension, Lempel-Ziv, compression, Lyapunov exponent"
+version = "0.5.0"
+description = "Fast, low-memory complexity measures for time series (EEG, MEG, physiology), single signals or batches"
+keywords = ["complexity", "entropy", "fractal dimension", "EEG", "time series", "Lempel-Ziv", "DFA"]
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -25,6 +26,7 @@ docs = ["sphinx", "furo", "myst-parser", "sphinx-gallery", "mne", "matplotlib"]
 
 [project.urls]
 Homepage = "https://github.com/Don-Yin/complexeva"
+Documentation = "https://don-yin.github.io/complexeva/"
 Changelog = "https://github.com/Don-Yin/complexeva/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.sdist]

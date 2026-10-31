@@ -1,15 +1,8 @@
 build
 dist
 complexeva.egg-info
-_dev**
-**.sh
-
 __pycache__
 .DS_Store
-**test.py
-
-candidate-measures.md
-dev.py
 # copyrighted paper PDFs, kept locally only
 docs/papers/*.pdf
 

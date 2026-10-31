@@ -64,14 +64,7 @@ def test_batch_reaches_kernel_without_copying(monkeypatch, metric, module_name, 
             with monkeypatch.context() as context:
                 context.setattr(numpy, "empty", no_row_buffer)
                 uncompiled = kernel.py_func(values, direct, *args)
-            pairs = zip(compiled, uncompiled)
-            if metric == "hfd":
-                assert compiled[1:] == uncompiled[1:]
-                pairs = [(compiled[0], uncompiled[0])]
-            elif metric == "permutation_entropy":
-                pairs = [(compiled, uncompiled)]
-            for actual, expected in pairs:
-                numpy.testing.assert_array_equal(actual.view(numpy.uint64), expected.view(numpy.uint64))
+            numpy.testing.assert_array_equal(compiled.view(numpy.uint64), uncompiled.view(numpy.uint64))
         elif metric in ("hfd", "permutation_entropy"):
             assert direct is None
         else:

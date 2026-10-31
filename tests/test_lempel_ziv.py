@@ -119,7 +119,7 @@ def test_invalid_method_names_bad_value(measure):
 def test_nonbinary_string_names_bad_value(data):
     with pytest.raises(ValueError) as error:
         lempel_ziv(data)
-    assert "time_series" in str(error.value)
+    assert "x must" in str(error.value)
     assert repr(data) in str(error.value)
 
 
@@ -202,7 +202,7 @@ def test_batch_nonfinite_names_full_index(value, method):
     x = numpy.asfortranarray(numpy.ones((2, 3, 8)))
     x[0, 1, 5] = value
     x[1, 0, 0] = numpy.nan
-    with pytest.raises(ValueError, match="time_series.*finite") as error:
+    with pytest.raises(ValueError, match="x must.*finite") as error:
         lempel_ziv(x, method=method)
     assert str(value) in str(error.value)
     assert "index (0, 1, 5)" in str(error.value)
@@ -210,7 +210,7 @@ def test_batch_nonfinite_names_full_index(value, method):
 
 @pytest.mark.parametrize("data", [numpy.ones((2, 3), dtype=complex), [["0", "1"], ["1", "0"]], [[1], [2, 3]]])
 def test_invalid_numeric_batch(data):
-    with pytest.raises(ValueError, match="time_series"):
+    with pytest.raises(ValueError, match="x must"):
         lempel_ziv(data)
 
 
@@ -291,3 +291,20 @@ def test_nonfinite_order_with_transposed_negative_strides(method, invalid):
     x[1, 0, 0] = invalid
     with pytest.raises(ValueError, match=r"finite.*index \(0, 2, 99\)"):
         lempel_ziv(x, method=method)
+
+
+@pytest.mark.parametrize("data", ["", []])
+@pytest.mark.parametrize("method", ["mean", "median", "diff"])
+def test_empty_sequence_preserves_counts(data, method):
+    assert lempel_ziv(data, method=method) == 1
+    assert lempel_ziv(data, method=method, normalize=True) == 0.0
+
+
+def test_single_difference_preserves_counts():
+    assert lempel_ziv([1.0], method="diff") == 1
+    assert lempel_ziv([1.0], method="diff", normalize=True) == 0.0
+
+
+def test_empty_numeric_series_still_validates_method():
+    with pytest.raises(ValueError, match="method.*'mode'"):
+        lempel_ziv([], method="mode")

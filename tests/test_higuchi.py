@@ -123,7 +123,7 @@ def test_batch_nonfinite_names_position():
 
 
 def test_batch_k_max_uses_time_axis():
-    with pytest.raises(ValueError, match=re.escape("X.shape[-1] // 2 = 5")):
+    with pytest.raises(ValueError, match=re.escape("x.shape[-1] // 2 = 5")):
         hfd(numpy.ones((100, 10)), k_max=6)
 
 

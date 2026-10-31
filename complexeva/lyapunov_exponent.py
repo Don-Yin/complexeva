@@ -142,7 +142,7 @@ def _mean_period(x: NDArray[numpy.float64]) -> int:
 
 
 def lyapunov_exponent(
-    data: ArrayLike,
+    x: ArrayLike,
     tau: int | numpy.integer = 1,
     m: int | numpy.integer = 2,
     dt: float = 1.0,
@@ -156,15 +156,15 @@ def lyapunov_exponent(
     and the exponent is the slope of the mean log divergence of those pairs over trajectory_len steps.
 
     Args:
-        data: One-dimensional, finite, real-valued samples, converted to float64. The resulting number
-            of trajectories, len(data) - (m - 1) * tau - trajectory_len + 1, must be at least
+        x: One-dimensional, finite, real-valued samples, converted to float64. The resulting number
+            of trajectories, len(x) - (m - 1) * tau - trajectory_len + 1, must be at least
             2 * min_tsep + 2.
         tau: Positive integer embedding delay in samples. Defaults to 1.
         m: Positive integer embedding dimension. Defaults to 2.
         dt: Finite, strictly positive sampling interval. Defaults to 1.0; the result has units of 1/dt.
         min_tsep: Nonnegative integer Theiler window in samples. Pairs at this separation or closer
             are excluded. None estimates the ceil of the reciprocal power-weighted mean frequency,
-            capped at len(data) // 4. Constant data requires an explicit value.
+            capped at len(x) // 4. Constant data requires an explicit value.
         trajectory_len: Integer number of future steps followed per pair, at least 2. Defaults to 20.
         fit_offset: Nonnegative integer number of initial steps excluded from the line fit. Must be
             at most trajectory_len - 2 so that two steps remain. Defaults to 0.
@@ -175,12 +175,12 @@ def lyapunov_exponent(
         steps have finite mean log distances, including constant data with an explicit min_tsep.
 
     Raises:
-        ValueError: If data is not a finite one-dimensional signal, a parameter is outside its
+        ValueError: If x is not a finite one-dimensional signal, a parameter is outside its
             stated range, the series is too short, or a default window cannot be inferred.
     """
-    x = as_finite_1d(data, "data")
+    x = as_finite_1d(x, "x")
     if len(x) < 2:
-        raise ValueError(f"data must contain at least 2 samples, got len(data)={len(x)}")
+        raise ValueError(f"x must contain at least 2 samples, got len(x)={len(x)}")
     tau = check_positive_int(tau, "tau")
     m = check_positive_int(m, "m")
     trajectory_len = check_positive_int(trajectory_len, "trajectory_len", minimum=2)
@@ -196,7 +196,7 @@ def lyapunov_exponent(
     n_traj = n_vectors - trajectory_len + 1
     if n_traj < 2 * min_tsep + 2:
         raise ValueError(
-            f"series too short: len(data)={len(x)} gives {n_traj} trajectories for m={m}, tau={tau}, "
+            f"series too short: len(x)={len(x)} gives {n_traj} trajectories for m={m}, tau={tau}, "
             f"trajectory_len={trajectory_len}, min_tsep={min_tsep}; require at least {2 * min_tsep + 2}"
         )
     Y = numpy.stack([x[i * tau : i * tau + n_vectors] for i in range(m)], axis=1)

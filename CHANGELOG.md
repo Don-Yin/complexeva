@@ -1,5 +1,9 @@
 # changelog
 
+## 0.5.0 (2026-10-31)
+
+- Breaking: every measure names its signal argument `x`. It was `X` in `hfd` and `hfd_hilbert`, `time_series` in `lempel_ziv` and `lempel_ziv_hilbert`, and `data` in `lyapunov_exponent` and `compression_complexity`; positional calls are unaffected.
+
 ## 0.4.1 (2026-10-30)
 
 - `hfd`, `dfa`, `permutation_entropy`, `sample_entropy` and numeric `lempel_ziv` accept a batch with time on the last axis, e.g. (channels, time), and return one value per signal, identical bit for bit to the 1D call. `hfd_hilbert`, `lempel_ziv_hilbert`, string input, `lyapunov_exponent` and `compression_complexity` stay 1D.

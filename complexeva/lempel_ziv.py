@@ -3,7 +3,7 @@ from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
 from ._hilbert import hilbert_envelope
-from ._validation import as_array, as_finite_1d, as_kernel_readable
+from ._validation import as_signals
 
 _DIRECT_COUNT_LIMIT = 512
 _WIDE_PREFIX_LIMIT = 8192
@@ -119,22 +119,21 @@ def _count_components(binary_array: NDArray[numpy.bool_]) -> int:
     return _count_packed(words, n)
 
 
-def _binarize(time_series: ArrayLike, method: str) -> NDArray[numpy.bool_]:
+def _binarize(vector: NDArray[numpy.float64], method: str) -> NDArray[numpy.bool_]:
     """Convert numeric samples to binary symbols for Lempel-Ziv counting.
 
     Args:
-        time_series: One-dimensional, finite, real-valued samples, converted to float64.
+        vector: One-dimensional, finite float64 samples.
         method: "median" or "mean" marks samples strictly above the threshold; "diff" marks
             strictly increasing adjacent samples. Median thresholding follows doi:10.1101/2021.09.23.461002.
 
     Returns:
-        Boolean array of symbols. Its length is len(time_series), or max(len(time_series) - 1, 0)
+        Boolean array of symbols. Its length is len(x), or max(len(x) - 1, 0)
         for "diff". An empty signal produces an empty array.
 
     Raises:
-        ValueError: If the input is not a finite, real, one-dimensional signal or method is unknown.
+        ValueError: If method is unknown.
     """
-    vector = as_finite_1d(time_series, "time_series")
     if vector.size == 0 and method in ("diff", "mean", "median"):
         return numpy.empty(0, dtype=numpy.bool_)
     if method == "diff":
@@ -146,15 +145,6 @@ def _binarize(time_series: ArrayLike, method: str) -> NDArray[numpy.bool_]:
     else:
         raise ValueError(f"method must be 'mean', 'median', or 'diff', got {method!r}")
     return bits
-
-
-@njit(cache=True)
-def _lz_first_nonfinite(values):
-    """Find the first invalid sample without allocating any per-row status array."""
-    for position in range(values.size):
-        if not numpy.isfinite(numpy.float64(values.flat[position])):
-            return position
-    return -1
 
 
 @njit(cache=True)
@@ -226,15 +216,10 @@ def _median_thresholds(values, out):
 
 def _batch_lz(values: NDArray, method: str, normalize: bool) -> NDArray[numpy.int64] | NDArray[numpy.float64]:
     """Use one median scratch row and bound parallel indices by that same 8N budget."""
-    values = as_kernel_readable(values, "time_series")
     if method not in ("median", "mean", "diff"):
         raise ValueError(f"method must be 'mean', 'median', or 'diff', got {method!r}")
     n = values.shape[-1]
     rows = int(numpy.prod(values.shape[:-1], dtype=numpy.intp))
-    invalid = _lz_first_nonfinite(values)
-    if invalid >= 0:
-        where = tuple(int(j) for j in numpy.unravel_index(invalid, values.shape))
-        raise ValueError(f"time_series must contain only finite values, got {values[where]!r} at index {where}")
     thresholds = numpy.empty(rows, dtype=numpy.float64)
     if method == "median" and n:
         _median_thresholds(values, thresholds)
@@ -262,12 +247,12 @@ def _batch_lz(values: NDArray, method: str, normalize: bool) -> NDArray[numpy.in
 
 
 def lempel_ziv(
-    time_series: ArrayLike | str, method: str = "median", normalize: bool = False
+    x: ArrayLike | str, method: str = "median", normalize: bool = False
 ) -> int | float | NDArray[numpy.int64] | NDArray[numpy.float64]:
     """Compute Kaspar-Schuster Lempel-Ziv complexity along the last axis.
 
     Args:
-        time_series: A binary string containing only "0" and "1", used without binarization, or
+        x: A binary string containing only "0" and "1", used without binarization, or
             finite, real-valued samples with time on the last axis, converted to float64 per row.
             A numeric batch has shape (..., time); NUMBA_NUM_THREADS limits parallel workers,
             additionally bounded by a one-row scratch budget. Small batches run serially.
@@ -282,7 +267,7 @@ def lempel_ziv(
         Raw integer component count, or a normalized float that is approximately 1 for a long
         random binary sequence and need not be bounded by 1. For n <= 1, normalized complexity
         is 0.0; the raw count of an empty or single-symbol sequence is 1. Returns a Python scalar
-        for one signal or an int64 (raw) / float64 (normalized) array of shape time_series.shape[:-1]
+        for one signal or an int64 (raw) / float64 (normalized) array of shape x.shape[:-1]
         for a numeric batch, bitwise equal to separate 1D calls. A constant row follows the 1D rule.
 
     Raises:
@@ -290,14 +275,12 @@ def lempel_ziv(
             and real, or the numeric binarization method is unknown. Non-finite errors identify
             the full index within a batch.
     """
-    if isinstance(time_series, str):
-        if any(c not in "01" for c in time_series):
-            raise ValueError(f"time_series must be a binary string containing only '0' and '1', got {time_series!r}")
-        binary_array = numpy.array([c == "1" for c in time_series], dtype=numpy.bool_)
+    if isinstance(x, str):
+        if any(c not in "01" for c in x):
+            raise ValueError(f"x must be a binary string containing only '0' and '1', got {x!r}")
+        binary_array = numpy.array([c == "1" for c in x], dtype=numpy.bool_)
     else:
-        values = as_array(time_series, "time_series")
-        if values.ndim == 0:
-            raise ValueError(f"time_series must have a time axis, got shape {values.shape}")
+        values = as_signals(x, "x")
         if values.ndim > 1:
             return _batch_lz(values, method, normalize)
         binary_array = _binarize(values, method)
@@ -308,11 +291,11 @@ def lempel_ziv(
     return float(complexity * numpy.log2(n) / n) if n > 1 else 0.0
 
 
-def lempel_ziv_hilbert(time_series: ArrayLike, method: str = "median", normalize: bool = False) -> int | float:
+def lempel_ziv_hilbert(x: ArrayLike, method: str = "median", normalize: bool = False) -> int | float:
     """Compute Lempel-Ziv complexity on the Hilbert envelope of a signal.
 
     Args:
-        time_series: Nonempty, one-dimensional, finite, real-valued samples, converted to float64
+        x: Nonempty, one-dimensional, finite, real-valued samples, converted to float64
             before taking the Hilbert transform. Binary strings are not accepted by this variant.
         method: Envelope binarization rule: "median" (default), "mean", or "diff" for rising steps.
             Threshold comparisons are strict, as in lempel_ziv.
@@ -320,12 +303,12 @@ def lempel_ziv_hilbert(time_series: ArrayLike, method: str = "median", normalize
             binarized envelope length n, or 0.0 for n <= 1. Defaults to False.
 
     Returns:
-        Integer count or normalized float for abs(hilbert(time_series)), the instantaneous
+        Integer count or normalized float for abs(hilbert(x)), the instantaneous
         amplitude. Normalized values near 1 indicate random binary structure, not a strict bound.
 
     Raises:
-        ValueError: If time_series is empty or not a finite, real, one-dimensional signal, or the
+        ValueError: If x is empty or not a finite, real, one-dimensional signal, or the
             binarization method is unknown.
     """
-    result = lempel_ziv(hilbert_envelope(time_series, "time_series"), method=method, normalize=normalize)
+    result = lempel_ziv(hilbert_envelope(x, "x"), method=method, normalize=normalize)
     return float(result) if normalize else int(result)
