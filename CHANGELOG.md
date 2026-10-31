@@ -1,5 +1,10 @@
 # changelog
 
+## 0.6.0 (2026-10-31)
+
+- New measures, each batched like the others and checked against every package that implements it: `approximate_entropy`, `multiscale_entropy`, `fuzzy_entropy`, `katz_fd`, `petrosian_fd`, `hjorth`, `spectral_entropy`, `svd_entropy`, `correlation_dimension`.
+- `katz_fd` follows Katz 1988 and measures distances on (time, amplitude) points; antropy, NeuroKit2 and MNE-Features use amplitude only, so their values differ.
+
 ## 0.5.0 (2026-10-31)
 
 - Breaking: every measure names its signal argument `x`. It was `X` in `hfd` and `hfd_hilbert`, `time_series` in `lempel_ziv` and `lempel_ziv_hilbert`, and `data` in `lyapunov_exponent` and `compression_complexity`; positional calls are unaffected.

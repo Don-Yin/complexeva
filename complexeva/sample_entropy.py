@@ -3,7 +3,7 @@ from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
 from ._sampen_tree import _tree_match_count, _tree_workspace_bytes
-from ._validation import as_signals, check_finite_real, check_positive_int
+from ._validation import as_signals, check_finite_real, check_positive_int, float64_rows
 
 _TREE_MIN_TEMPLATES = 4096  # An allocation-free scan beats tree setup on short series.
 _TREE_MAX_ORDER = 4  # Bound tree storage and avoid ineffective high-dimensional pruning.
@@ -67,13 +67,7 @@ def _match_counts_rows(
 
 def _batch_tolerances(values: NDArray) -> NDArray[numpy.float64]:
     """Reduce contiguous float64 rows exactly as 1D."""
-    tolerances = numpy.empty(int(numpy.prod(values.shape[:-1], dtype=numpy.intp)))
-    for i in range(len(tolerances)):
-        # ndindex materializes each range as a tuple; avoid its O(rows) Python-integer pool.
-        index = i if values.ndim == 2 else numpy.unravel_index(i, values.shape[:-1])
-        row = numpy.ascontiguousarray(values[index], dtype=numpy.float64)
-        tolerances[i] = 0.2 * numpy.std(row, ddof=0)
-    return tolerances
+    return numpy.fromiter((0.2 * numpy.std(row, ddof=0) for row in float64_rows(values)), numpy.float64)
 
 
 def _entropy_from_counts(count_m: int, count_m1: int) -> float:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Circle
 
 WIDTH_CM, HEIGHT_CM = 3.6, 1.6
 GREY, BLUE, ORANGE = "#9ca3af", "#2563eb", "#ea580c"
@@ -140,9 +141,127 @@ def compression_complexity():
     return fig
 
 
+def approximate_entropy():
+    """A template's tolerance band; matches include the template itself."""
+    t = np.arange(60)
+    x = np.sin(t / 3.0) + 0.08 * np.random.default_rng(2).standard_normal(60)
+    order, r, i = 3, 0.3, 4
+    fig, ax = _canvas()
+    ax.plot(x, color=GREY, lw=1.0)
+    template = x[i : i + order]
+    for j in range(len(x) - order + 1):
+        if np.max(np.abs(x[j : j + order] - template)) <= r:
+            ax.plot(t[j : j + order], x[j : j + order], color=ORANGE if j == i else BLUE, lw=2.2)
+    return fig
+
+
+def multiscale_entropy():
+    """The same signal coarse-grained by non-overlapping means at scales 1, 3 and 6."""
+    x = np.random.default_rng(7).standard_normal(60)
+    fig, ax = _canvas()
+    for offset, scale, colour in ((2.4, 1, GREY), (0, 3, BLUE), (-2.0, 6, ORANGE)):
+        coarse = x.reshape(-1, scale).mean(axis=1)
+        ax.step(
+            np.arange(len(coarse)) * scale, coarse * (0.5 if scale == 1 else 1) + offset, where="post", color=colour, lw=1.0
+        )
+    return fig
+
+
+def fuzzy_entropy():
+    """Exponential membership exp(-d^2 / r) against sample entropy's hard cut-off."""
+    d = np.linspace(0, 1, 200)
+    fig, ax = _canvas()
+    ax.plot(d, (d < 0.3).astype(float), color=GREY, lw=1.0, ls="--")
+    ax.plot(d, np.exp(-(d**2) / 0.09), color=BLUE, lw=1.6)
+    return fig
+
+
+def katz_fd():
+    """Curve length against the farthest distance from the first point."""
+    x = _signal(40, seed=8)
+    far = int(np.argmax(np.hypot(np.arange(40), x - x[0])))
+    fig, ax = _canvas()
+    ax.plot(x, color=BLUE, lw=1.2)
+    ax.plot([0, far], [x[0], x[far]], color=ORANGE, lw=1.4, ls="--")
+    return fig
+
+
+def petrosian_fd():
+    """Sign changes of the first difference."""
+    x = _signal(40, seed=9)
+    turns = np.flatnonzero(np.diff(np.signbit(np.diff(x)))) + 1
+    fig, ax = _canvas()
+    ax.plot(x, color=GREY, lw=1.0)
+    ax.plot(turns, x[turns], "o", color=BLUE, ms=2.5)
+    return fig
+
+
+def hjorth():
+    """A signal and its first difference, whose spreads give mobility and complexity."""
+    t = np.arange(80)
+    x = np.sin(t / 5) + 0.3 * np.sin(t / 1.3)
+    fig, ax = _canvas()
+    ax.plot(x + 1.2, color=GREY, lw=1.0)
+    ax.plot(np.diff(x) * 2 - 1.2, color=BLUE, lw=1.0)
+    return fig
+
+
+def spectral_entropy():
+    """Normalised power spectrum of an alpha-like signal."""
+    rng = np.random.default_rng(10)
+    t = np.arange(256) / 128
+    x = np.sin(2 * np.pi * 10 * t) + 0.6 * rng.standard_normal(256)
+    power = np.abs(np.fft.rfft(x))[1:40] ** 2
+    fig, ax = _canvas()
+    ax.bar(np.arange(len(power)), power / power.sum(), width=0.8, color=BLUE)
+    return fig
+
+
+def svd_entropy():
+    """Normalised singular values of the delay embedding."""
+    x = _signal(200, seed=11)
+    embedding = np.lib.stride_tricks.sliding_window_view(x, 6)
+    s = np.linalg.svd(embedding, compute_uv=False)
+    fig, ax = _canvas()
+    ax.bar(np.arange(len(s)), s / s.sum(), width=0.75, color=BLUE)
+    return fig
+
+
+def correlation_dimension():
+    """Delay-embedded points; pairs closer than r are counted."""
+    t = np.arange(300)
+    x = np.sin(t / 7) + 0.15 * np.random.default_rng(12).standard_normal(300)
+    a, b = x[:-5], x[5:]
+    centre, r = 40, 0.35
+    close = np.hypot(a - a[centre], b - b[centre]) < r
+    fig, ax = _canvas()
+    ax.scatter(a[~close], b[~close], s=0.6, color=GREY)
+    ax.scatter(a[close], b[close], s=0.8, color=BLUE)
+    ax.add_patch(Circle((a[centre], b[centre]), r, fill=False, color=ORANGE, lw=1.0))
+    ax.set_aspect("equal", adjustable="datalim")
+    return fig
+
+
 ICONS = {
     f.__name__: f
-    for f in (hfd, lempel_ziv, sample_entropy, permutation_entropy, dfa, lyapunov_exponent, compression_complexity)
+    for f in (
+        hfd,
+        lempel_ziv,
+        sample_entropy,
+        approximate_entropy,
+        multiscale_entropy,
+        fuzzy_entropy,
+        permutation_entropy,
+        spectral_entropy,
+        svd_entropy,
+        dfa,
+        katz_fd,
+        petrosian_fd,
+        hjorth,
+        correlation_dimension,
+        lyapunov_exponent,
+        compression_complexity,
+    )
 }
 
 

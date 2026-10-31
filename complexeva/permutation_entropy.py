@@ -4,7 +4,7 @@ import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
 
-from ._validation import as_signals, check_positive_int, unit_stride_rows
+from ._validation import as_signals, check_positive_int, float64_rows, unit_stride_rows
 
 _MAX_HISTOGRAM_ORDER = 7  # Bound the histogram to 7! int64 bins (40,320 bytes).
 
@@ -130,7 +130,6 @@ def permutation_entropy(
     else:
         # NumPy's arbitrary-order counting remains serial, with only a single row converted at a time.
         out = numpy.empty(values.size // n)
-        for i, index in enumerate(numpy.ndindex(values.shape[:-1])):
-            row = numpy.ascontiguousarray(values[index], dtype=numpy.float64)
+        for i, row in enumerate(float64_rows(values)):
             out[i] = _large_order_entropy(row, order, delay, divisor)
     return out.reshape(values.shape[:-1])

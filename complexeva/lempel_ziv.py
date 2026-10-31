@@ -3,7 +3,7 @@ from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
 from ._hilbert import hilbert_envelope
-from ._validation import as_signals
+from ._validation import as_signals, float64_rows
 
 _DIRECT_COUNT_LIMIT = 512
 _WIDE_PREFIX_LIMIT = 8192
@@ -225,8 +225,8 @@ def _batch_lz(values: NDArray, method: str, normalize: bool) -> NDArray[numpy.in
         _median_thresholds(values, thresholds)
     elif method == "mean" and n:
         # Keep NumPy's pairwise summation order, exactly as in the scalar path.
-        for row, index in enumerate(numpy.ndindex(values.shape[:-1])):
-            thresholds[row] = numpy.mean(numpy.ascontiguousarray(values[index], dtype=numpy.float64))
+        for i, row in enumerate(float64_rows(values)):
+            thresholds[i] = numpy.mean(row)
     else:
         thresholds.fill(0)
     # Links, packed symbols, prefix table, and small array headers fit within one

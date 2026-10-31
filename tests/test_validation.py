@@ -1,22 +1,50 @@
 import re
+from functools import partial
 
 import numpy
 import pytest
 
 from complexeva import (
+    approximate_entropy,
+    correlation_dimension,
     dfa,
+    fuzzy_entropy,
+    hfd,
+    hfd_hilbert,
+    hjorth,
+    katz_fd,
+    lempel_ziv,
+    lempel_ziv_hilbert,
+    lyapunov_exponent,
+    multiscale_entropy,
+    permutation_entropy,
+    petrosian_fd,
+    sample_entropy,
+    spectral_entropy,
+    svd_entropy,
+)
+from complexeva._validation import as_finite_1d, check_positive_int
+
+# Every numeric measure; all name their signal argument x.
+MEASURES = [
     hfd,
     hfd_hilbert,
     lempel_ziv,
     lempel_ziv_hilbert,
     lyapunov_exponent,
-    permutation_entropy,
     sample_entropy,
-)
-from complexeva._validation import as_finite_1d, check_positive_int
-
-# Every numeric measure; all name their signal argument x.
-MEASURES = [hfd, hfd_hilbert, lempel_ziv, lempel_ziv_hilbert, lyapunov_exponent, sample_entropy, permutation_entropy, dfa]
+    permutation_entropy,
+    dfa,
+    approximate_entropy,
+    multiscale_entropy,
+    fuzzy_entropy,
+    katz_fd,
+    petrosian_fd,
+    hjorth,
+    partial(spectral_entropy, sf=100),
+    svd_entropy,
+    correlation_dimension,
+]
 
 
 @pytest.mark.parametrize("measure", MEASURES)

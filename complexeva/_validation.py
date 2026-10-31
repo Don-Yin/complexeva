@@ -33,6 +33,14 @@ def as_real_float64(values: NDArray, name: str = "x") -> NDArray[numpy.float64]:
     return numpy.ascontiguousarray(values, dtype=numpy.float64)
 
 
+def float64_rows(values: NDArray):
+    """Yield each signal along the last axis as a contiguous float64 row, one at a time, in C order."""
+    lead = values.shape[:-1]
+    for i in range(math.prod(lead)):
+        # ndindex keeps a tuple per row; unravel_index keeps memory constant in the row count.
+        yield numpy.ascontiguousarray(values[numpy.unravel_index(i, lead)], dtype=numpy.float64)
+
+
 def as_kernel_readable(values: NDArray, name: str = "x") -> NDArray:
     """Return values that Numba kernels can read in place, without copying the batch.
 
