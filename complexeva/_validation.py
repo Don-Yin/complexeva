@@ -5,6 +5,11 @@ import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
 
+# Data outside these amplitudes are rescaled before squaring or multiplying, so products stay normal and finite;
+# ordinary data keep their exact arithmetic.
+MIN_SAFE_AMPLITUDE = 1e-100
+MAX_SAFE_AMPLITUDE = 1e100
+
 
 @njit(cache=True)
 def _first_nonfinite(rows: NDArray) -> int:
@@ -16,6 +21,15 @@ def _first_nonfinite(rows: NDArray) -> int:
             if not numpy.isfinite(row[j]):
                 return i * n + j
     return -1
+
+
+@njit(cache=True)
+def _is_constant(row: NDArray) -> bool:
+    """Recognize exact constants before rounded means can give them a nonzero std."""
+    for j in range(1, len(row)):
+        if row[j] != row[0]:
+            return False
+    return True
 
 
 def as_array(x: ArrayLike, name: str = "x") -> NDArray:
@@ -113,3 +127,11 @@ def check_finite_real(value: float | numpy.floating | numpy.integer, name: str, 
     if not math.isfinite(number) or number < 0 or (number == 0 and not allow_zero):
         raise ValueError(f"{name} must be a finite real number {bound}, got {value!r}")
     return number
+
+
+def default_radius(row: NDArray[numpy.float64], factor: float) -> float:
+    """Return factor * std(row, ddof=0), but exactly 0 for an exactly constant row, whose rounded mean gives a nonzero or overflowing std.
+
+    The radius is not validated: each caller checks it under its own parameter name.
+    """
+    return 0.0 if _is_constant(row) else float(factor * numpy.std(row, ddof=0))

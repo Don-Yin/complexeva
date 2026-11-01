@@ -1,5 +1,10 @@
 # changelog
 
+## 0.6.2 (2026-11-01)
+
+- `sample_entropy` returns NaN for a constant signal whose float standard deviation is not exactly zero (for example `numpy.full(100, 0.1)`), as documented; it returned -0.0 or raised before.
+- Simpler internals: dead tree-counting code removed and shared constants given one home; `sample_entropy` and `multiscale_entropy` are about 10% faster at N = 100k.
+
 ## 0.6.1 (2026-10-31)
 
 - `multiscale_entropy(x, method="modified")` computes modified multiscale entropy (Wu et al. 2013). It follows the paper's equations; NeuroKit2 and EntropyHub use other conventions, so their raw values differ.

@@ -4,14 +4,11 @@ import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
 
-from ._validation import as_signals, check_positive_int, unit_stride_rows
+from ._validation import MAX_SAFE_AMPLITUDE, MIN_SAFE_AMPLITUDE, as_signals, check_positive_int, unit_stride_rows
 
 # Forming X.T @ X squares the condition number. Below this eigenvalue ratio,
 # accumulate a small QR factor instead, retaining singular values near zero.
 _MIN_GRAM_EIGENVALUE_RATIO = 1e-4
-# Products remain normal and finite at every allowed embedding dimension.
-_MIN_PRODUCT_SCALE = 1e-100
-_MAX_PRODUCT_SCALE = 1e100
 
 
 @njit(cache=True)
@@ -56,7 +53,7 @@ def _svd_entropy_row(values, order, delay, divisor):
         return numpy.nan
     if constant:
         return 0.0
-    scale = maximum if maximum < _MIN_PRODUCT_SCALE or maximum > _MAX_PRODUCT_SCALE else 1.0
+    scale = maximum if maximum < MIN_SAFE_AMPLITUDE or maximum > MAX_SAFE_AMPLITUDE else 1.0
     columns = min(count, order)
     rows = max(count, order)
     row_stride, column_stride = (1, delay) if count >= order else (delay, 1)

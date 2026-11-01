@@ -5,11 +5,7 @@ from numba import njit
 from numpy.typing import ArrayLike, NDArray
 from scipy.fftpack import rfft
 
-from ._validation import as_signals, check_finite_real, check_positive_int
-
-# Rescale only extreme amplitudes; ordinary samples retain their original precision when centred.
-_MIN_SAFE_AMPLITUDE = 1e-100
-_MAX_SAFE_AMPLITUDE = 1e100
+from ._validation import MAX_SAFE_AMPLITUDE, MIN_SAFE_AMPLITUDE, as_signals, check_finite_real, check_positive_int
 
 
 @njit(cache=True)
@@ -33,7 +29,7 @@ def _prepare_spectrum(row, work, window, step):
     if low == high:
         return False
     amplitude = max(abs(low), abs(high))
-    scale = amplitude if amplitude < _MIN_SAFE_AMPLITUDE or amplitude > _MAX_SAFE_AMPLITUDE else 1.0
+    scale = amplitude if amplitude < MIN_SAFE_AMPLITUDE or amplitude > MAX_SAFE_AMPLITUDE else 1.0
     length = work.shape[1]
     for segment in range(work.shape[0]):
         start = segment * step

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from complexeva._sampen_tree import _tree_match_count
+from complexeva._sampen_tree import _tree_match_counts
 from complexeva.multiscale_entropy import _modified_counts, _offset_counts, multiscale_entropy
 from complexeva.sample_entropy import sample_entropy
 
@@ -191,13 +191,15 @@ def test_invalid_method(method):
 def test_delayed_tree_counts_match_independent_literal(order, delay):
     x = np.random.default_rng(239).integers(-2, 3, 75).astype(float)
     n = len(x) - order * delay
-    for dimension in (order, order + 1):
-        expected = sum(
+    expected = tuple(
+        sum(
             all(abs(x[i + k * delay] - x[j + k * delay]) < 1.5 for k in range(dimension))
             for i in range(n)
             for j in range(i + 1, n)
         )
-        assert _tree_match_count(x, dimension, n, 1.5, delay) == expected
+        for dimension in (order, order + 1)
+    )
+    assert _tree_match_counts(x, order, n, 1.5, delay) == expected
 
 
 @pytest.mark.parametrize("scale", [2, 7, 20])

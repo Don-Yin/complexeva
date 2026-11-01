@@ -2,12 +2,8 @@ import numpy
 from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
-from ._sampen_tree import _tree_match_counts, _tree_workspace_bytes
-from ._validation import as_signals, check_finite_real, check_positive_int, float64_rows
-
-_TREE_MIN_TEMPLATES = 4096  # An allocation-free scan beats tree setup on short series.
-_TREE_MAX_ORDER = 4  # Bound tree storage and avoid ineffective high-dimensional pruning.
-_TREE_BATCH_BYTES = 12 * 1024 * 1024  # Bound concurrent row trees, not the process's thread pool.
+from ._sampen_tree import _TREE_BATCH_BYTES, _TREE_MAX_ORDER, _TREE_MIN_TEMPLATES, _tree_match_counts, _tree_workspace_bytes
+from ._validation import as_signals, check_finite_real, check_positive_int, default_radius, float64_rows
 
 
 @njit(cache=True)
@@ -64,7 +60,7 @@ def _match_counts_rows(
 
 def _batch_tolerances(values: NDArray) -> NDArray[numpy.float64]:
     """Reduce contiguous float64 rows exactly as 1D."""
-    return numpy.fromiter((0.2 * numpy.std(row, ddof=0) for row in float64_rows(values)), numpy.float64)
+    return numpy.fromiter((default_radius(row, 0.2) for row in float64_rows(values)), numpy.float64)
 
 
 def _entropy_from_counts(count_m: int, count_m1: int) -> float:
@@ -89,8 +85,9 @@ def sample_entropy(
             threads.
         order: Length of the templates before extending them by one sample. Defaults to 2.
         tolerance: Nonnegative, finite distance threshold in the units of x. None (default) uses
-            0.2 * std(row, ddof=0) independently for each signal. Matches require distance strictly
-            less than this threshold, not less than or equal to it.
+            0.2 * std(row, ddof=0) independently for each signal, and zero for an exactly constant
+            signal. Matches require distance strictly less than this threshold, not less than or
+            equal to it.
 
     Returns:
         -log(A / B), where B counts matching pairs of length order and A counts those that still
@@ -125,7 +122,7 @@ def sample_entropy(
         raise ValueError(f"x needs at least order + 2 = {order + 2} samples, got {n}")
     if values.ndim == 1:
         if tolerance is None:
-            tolerance = float(0.2 * numpy.std(values, ddof=0))
+            tolerance = default_radius(values, 0.2)
         tolerance = check_finite_real(tolerance, "tolerance", allow_zero=True)
         if tolerance == 0:
             return float("nan")
@@ -137,10 +134,10 @@ def sample_entropy(
         tolerances = numpy.full(rows, check_finite_real(tolerance, "tolerance", allow_zero=True), dtype=numpy.float64)
     copy_rows = values.dtype != numpy.float64 or (values.ndim != 2 and not values.flags.c_contiguous)
     direct = numpy.empty((0, 0)) if copy_rows else values.reshape(rows, n)
-    chunks = min(rows, get_num_threads())
-    if n - order >= _TREE_MIN_TEMPLATES and order <= _TREE_MAX_ORDER:
-        chunks = min(chunks, max(1, _TREE_BATCH_BYTES // _tree_workspace_bytes(n - order, order + 1)))
     templates = n - order
+    chunks = min(rows, get_num_threads())
+    if templates >= _TREE_MIN_TEMPLATES and order <= _TREE_MAX_ORDER:
+        chunks = min(chunks, max(1, _TREE_BATCH_BYTES // _tree_workspace_bytes(templates, order + 1)))
     count_dtype = numpy.int32 if n <= 2147483647 and templates * (templates - 1) // 2 <= 2147483647 else numpy.int64
     counts = _match_counts_rows(values, direct, order, tolerances, chunks, count_dtype, copy_rows)
     invalid_tolerances = tolerances[~numpy.isfinite(tolerances)]

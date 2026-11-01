@@ -2,18 +2,17 @@ import numpy
 from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
-from ._sampen_tree import _tree_match_counts, _tree_workspace_bytes
-from ._validation import as_array, as_signals, check_finite_real, check_positive_int, float64_rows, unit_stride_rows
-from .sample_entropy import _TREE_BATCH_BYTES, _TREE_MAX_ORDER, _TREE_MIN_TEMPLATES, _match_counts
-
-
-@njit(cache=True)
-def _is_constant(row):
-    """Recognize exact constants before rounded means can give them a nonzero std."""
-    for j in range(1, len(row)):
-        if row[j] != row[0]:
-            return False
-    return True
+from ._sampen_tree import _TREE_BATCH_BYTES, _TREE_MAX_ORDER, _TREE_MIN_TEMPLATES, _tree_match_counts, _tree_workspace_bytes
+from ._validation import (
+    as_array,
+    as_signals,
+    check_finite_real,
+    check_positive_int,
+    default_radius,
+    float64_rows,
+    unit_stride_rows,
+)
+from .sample_entropy import _match_counts
 
 
 @njit(cache=True)
@@ -206,11 +205,7 @@ def multiscale_entropy(
     rows = int(numpy.prod(values.shape[:-1], dtype=numpy.intp))
     if r is None:
         tolerances = numpy.fromiter(
-            (
-                check_finite_real(0.0 if _is_constant(row) else float(0.15 * numpy.std(row, ddof=0)), "r", allow_zero=True)
-                for row in float64_rows(values)
-            ),
-            numpy.float64,
+            (check_finite_real(default_radius(row, 0.15), "r", allow_zero=True) for row in float64_rows(values)), numpy.float64
         )
     else:
         tolerances = numpy.full(rows, check_finite_real(r, "r", allow_zero=True))

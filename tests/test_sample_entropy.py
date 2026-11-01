@@ -5,8 +5,15 @@ import numpy
 import pytest
 
 from complexeva import sample_entropy
-from complexeva._sampen_tree import _build, _count, _tree_match_count, _tree_workspace_bytes
-from complexeva.sample_entropy import _TREE_MAX_ORDER, _TREE_MIN_TEMPLATES, _diagonal_match_counts, _match_counts
+from complexeva._sampen_tree import (
+    _TREE_MAX_ORDER,
+    _TREE_MIN_TEMPLATES,
+    _build,
+    _tree_count_typed,
+    _tree_match_counts,
+    _tree_workspace_bytes,
+)
+from complexeva.sample_entropy import _diagonal_match_counts, _match_counts
 
 
 def test_known_binary_templates_match_antropy_and_nolds():
@@ -36,6 +43,18 @@ def test_no_matching_templates_is_nan():
     assert numpy.isnan(sample_entropy(numpy.arange(10), tolerance=0.5))
     assert numpy.isnan(sample_entropy(numpy.ones(10)))
     assert numpy.isnan(sample_entropy(numpy.ones(10), tolerance=0))
+
+
+@pytest.mark.parametrize("length, value", [(100, 0.1), (100, 0.7), (100, -3.1), (100, 1 / 3), (10, 1e300), (1000, 1e300)])
+def test_rounded_constants_have_undefined_default_entropy(length, value):
+    # Summation roundoff gives these a nonzero (or overflowing) std, yet the default tolerance must be exactly zero.
+    constant = numpy.full(length, value)
+    noise = numpy.random.default_rng(7).standard_normal(length)
+    assert numpy.isnan(sample_entropy(constant))
+    batch = sample_entropy(numpy.stack([constant, noise, constant]))
+    assert isinstance(batch, numpy.ndarray)
+    assert numpy.isnan(batch[[0, 2]]).all()
+    numpy.testing.assert_array_equal(batch[1], sample_entropy(noise))
 
 
 def test_constant_and_periodic_signals_have_zero_entropy_at_positive_tolerance():
@@ -99,8 +118,7 @@ def literal_counts(x, order, tolerance):
 def test_spatial_counts_equal_literal_definition(order, length, tolerance):
     x = numpy.random.default_rng(length).integers(-3, 4, length).astype(float)
     expected = literal_counts(x, order, tolerance)
-    actual = tuple(_tree_match_count(x, dimension, length - order, tolerance) for dimension in (order, order + 1))
-    assert actual == expected
+    assert _tree_match_counts(x, order, length - order, tolerance) == expected
     assert _diagonal_match_counts(x, order, tolerance) == expected
 
 
@@ -111,7 +129,7 @@ def test_extreme_magnitudes_and_exact_radius(scale):
         for order in (1, 2, 3):
             expected = literal_counts(x, order, tolerance)
             assert _diagonal_match_counts(x, order, tolerance) == expected
-            assert tuple(_tree_match_count(x, d, len(x) - order, tolerance) for d in (order, order + 1)) == expected
+            assert _tree_match_counts(x, order, len(x) - order, tolerance) == expected
 
 
 def test_overflowing_distances_do_not_match():
@@ -119,7 +137,7 @@ def test_overflowing_distances_do_not_match():
     with numpy.errstate(over="ignore"):
         expected = literal_counts(x, 2, numpy.finfo(float).max)
     assert _diagonal_match_counts(x, 2, numpy.finfo(float).max) == expected
-    assert tuple(_tree_match_count(x, d, len(x) - 2, numpy.finfo(float).max) for d in (2, 3)) == expected
+    assert _tree_match_counts(x, 2, len(x) - 2, numpy.finfo(float).max) == expected
 
 
 @pytest.mark.parametrize("order", [1, 2, _TREE_MAX_ORDER - 1, _TREE_MAX_ORDER, _TREE_MAX_ORDER + 1, 17])
@@ -292,9 +310,10 @@ def test_batch_count_width_uses_maximum_pair_count(monkeypatch, n, dtype):
 @pytest.mark.parametrize("dtype", [numpy.int32, numpy.int64])
 def test_tree_index_width_does_not_narrow_pair_counts(dtype):
     n = 100000
-    tree = _build(numpy.ones(n), 3, n - 2, 8, dtype)
+    pairs = (n - 2) * (n - 3) // 2
+    assert _tree_count_typed(numpy.ones(n), 2, n - 2, 0.1, dtype) == (pairs, pairs)
+    tree = _build(numpy.ones(n), 3, n - 2, dtype)
     assert all(array.dtype == dtype for array in tree[-3:])
-    assert _count(*tree, 0.1) == (n - 2) * (n - 3) // 2
     if dtype == numpy.int32:
         assert _tree_workspace_bytes(n - 2, 3) == sum(array.nbytes for array in tree) + (n - 2) * 4
 

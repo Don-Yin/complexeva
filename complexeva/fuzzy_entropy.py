@@ -4,7 +4,7 @@ import numpy
 from numba import get_num_threads, njit, prange
 from numpy.typing import ArrayLike, NDArray
 
-from ._validation import as_signals, check_finite_real, check_positive_int, float64_rows, unit_stride_rows
+from ._validation import as_signals, check_finite_real, check_positive_int, default_radius, float64_rows, unit_stride_rows
 
 _PARALLEL_MIN_TEMPLATES = 4096  # Amortize the parallel scheduler on a single long signal.
 _BATCH_COORDINATE_BUDGET = 60  # Bound concurrent template storage to 60 * N float64 values (12 default-order workers).
@@ -119,13 +119,6 @@ def _entropy_rows(values, direct, order, radii, exponent, chunks):
     return out
 
 
-def _default_radius(row):
-    """Keep exactly constant data at zero width, even when std has summation roundoff."""
-    if numpy.min(row) == numpy.max(row):
-        return 0.0
-    return check_finite_real(float(0.2 * numpy.std(row, ddof=0)), "r", allow_zero=True)
-
-
 def fuzzy_entropy(
     x: ArrayLike,
     order: int | numpy.integer = 2,
@@ -184,12 +177,14 @@ def fuzzy_entropy(
         r = check_finite_real(r, "r", allow_zero=True)
     if values.ndim == 1:
         if r is None:
-            r = _default_radius(values)
+            r = check_finite_real(default_radius(values, 0.2), "r", allow_zero=True)
         kernel = _entropy_parallel if length - order >= _PARALLEL_MIN_TEMPLATES else _entropy_serial
         return float(kernel(values, order, r, exponent))
     rows = values.size // length
     if r is None:
-        radii = numpy.fromiter(map(_default_radius, float64_rows(values)), numpy.float64)
+        radii = numpy.fromiter(
+            (check_finite_real(default_radius(row, 0.2), "r", allow_zero=True) for row in float64_rows(values)), numpy.float64
+        )
     else:
         radii = numpy.full(rows, r)
     direct = unit_stride_rows(values)

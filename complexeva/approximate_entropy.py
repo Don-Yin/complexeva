@@ -4,12 +4,8 @@ import numpy
 from numba import njit
 from numpy.typing import ArrayLike, NDArray
 
-from ._sampen_tree import _build
-from ._validation import as_signals, check_finite_real, check_positive_int, unit_stride_rows
-from .sample_entropy import _batch_tolerances
-
-_TREE_MIN_TEMPLATES = 4096  # Short diagonal scans avoid constructing two spatial trees.
-_TREE_MAX_ORDER = 4  # Keep spatial pruning and workspace bounded in useful dimensions.
+from ._sampen_tree import _TREE_MAX_ORDER, _TREE_MIN_TEMPLATES, _build
+from ._validation import as_signals, check_finite_real, check_positive_int, float64_rows, unit_stride_rows
 
 
 @njit(cache=True)
@@ -49,7 +45,7 @@ def _diagonal_entropy(x, order, r):
 def _tree_phi(x, dimension, r):
     """Count individual inclusive neighbourhoods with lazy, exact dual-tree updates."""
     n = len(x) - dimension + 1
-    points, low, high, bounds, children, starts, stops = _build(x, dimension, n, 8)
+    points, low, high, bounds, children, starts, stops = _build(x, dimension, n)
     counts = numpy.zeros(n, dtype=numpy.int64)
     increments = numpy.zeros(len(starts), dtype=numpy.int64)
     depth, nodes = 1, len(starts)
@@ -141,6 +137,11 @@ def _entropy_rows(values, direct, order, radii):
     return out
 
 
+def _batch_radii(values: NDArray) -> NDArray[numpy.float64]:
+    """Reduce contiguous float64 rows exactly as 1D."""
+    return numpy.fromiter((0.2 * numpy.std(row, ddof=0) for row in float64_rows(values)), numpy.float64)
+
+
 def approximate_entropy(
     x: ArrayLike,
     order: int | numpy.integer = 2,
@@ -189,7 +190,7 @@ def approximate_entropy(
     if values.ndim == 1:
         radius = check_finite_real(float(0.2 * numpy.std(values)) if r is None else r, "r", allow_zero=True)
         return float(_entropy(values, order, radius))
-    radii = _batch_tolerances(values) if r is None else numpy.full(values.size // n, r)
+    radii = _batch_radii(values) if r is None else numpy.full(values.size // n, r)
     for radius in radii:
         if not numpy.isfinite(radius):
             check_finite_real(radius, "r", allow_zero=True)

@@ -4,10 +4,15 @@ import numpy
 from numba import njit
 
 _EXTENSION_SORT_MIN_PAIRS = 4096  # A sorted window scan pays off only for large matched blocks.
+_LEAF_SIZE = 8  # Points per leaf; _tree_workspace_bytes mirrors the node count this implies.
+# Where sample, approximate and multiscale entropy switch from the diagonal scan to the tree.
+_TREE_MIN_TEMPLATES = 4096  # An allocation-free scan beats tree setup on short series.
+_TREE_MAX_ORDER = 4  # Bound tree storage and avoid ineffective high-dimensional pruning.
+_TREE_BATCH_BYTES = 12 * 1024 * 1024  # Bound concurrent row trees, not the process's thread pool.
 
 
 @njit(cache=True)
-def _partition(x, permutation, start, stop, axis, target, delay=1):
+def _partition(x, permutation, start, stop, axis, target, delay):
     """Partition an index range around its median without copying vectors."""
     low, high = start, stop - 1
     while low < high:
@@ -31,10 +36,10 @@ def _partition(x, permutation, start, stop, axis, target, delay=1):
 
 
 @njit(cache=True)
-def _build(x, dimension, n, leafsize, index_dtype=numpy.int32, delay=1, extra=False):
+def _build(x, dimension, n, index_dtype=numpy.int32, delay=1, extra=False):
     """Split on dimension coordinates, optionally retaining one extension coordinate."""
     leaves = 1
-    while leaves * leafsize < n:
+    while leaves * _LEAF_SIZE < n:
         leaves *= 2
     capacity = 2 * leaves - 1
     permutation = numpy.arange(n, dtype=index_dtype)
@@ -60,7 +65,7 @@ def _build(x, dimension, n, leafsize, index_dtype=numpy.int32, delay=1, extra=Fa
             if high[node, k] - low[node, k] > high[node, axis] - low[node, axis]:
                 axis = k
         bounds[node] = high[node, axis] - low[node, axis]
-        if stop - start > leafsize and bounds[node] != 0:
+        if stop - start > _LEAF_SIZE and bounds[node] != 0:
             middle = (start + stop) // 2
             _partition(x, permutation, start, stop, axis, middle, delay)
             children[node] = nodes
@@ -125,7 +130,6 @@ def _extension_count(points, first_a, stop_a, first_b, stop_b, same, tolerance, 
 @njit(cache=True)
 def _count_matches(points, low, high, bounds, children, starts, stops, tolerance, dimension):
     """Count base matches and their extension subset in one unordered pair traversal."""
-    extra = dimension < points.shape[1]
     # A depth-first pair traversal uses O(tree depth), not O(node count), slots.
     depth, nodes = 1, len(starts)
     while nodes > 1:
@@ -150,8 +154,7 @@ def _count_matches(points, low, high, bounds, children, starts, stops, tolerance
         size_a, size_b = numpy.int64(stops[a] - starts[a]), numpy.int64(stops[b] - starts[b])
         if inside:
             count_m += size_a * (size_a - 1) // 2 if a == b else size_a * size_b
-            if extra:
-                count_m1 += _extension_count(points, starts[a], stops[a], starts[b], stops[b], a == b, tolerance, dimension)
+            count_m1 += _extension_count(points, starts[a], stops[a], starts[b], stops[b], a == b, tolerance, dimension)
             continue
         leaf_a, leaf_b = children[a] == -1, children[b] == -1
         if leaf_a and leaf_b:
@@ -163,8 +166,7 @@ def _count_matches(points, low, high, bounds, children, starts, stops, tolerance
                     for k in range(dimension):
                         match &= abs(points[i, k] - points[j, k]) < tolerance
                     count_m += match
-                    if extra:
-                        count_m1 += match & (abs(points[i, dimension] - points[j, dimension]) < tolerance)
+                    count_m1 += match & (abs(points[i, dimension] - points[j, dimension]) < tolerance)
             continue
         if a == b:
             left, right = children[a], children[a] + 1
@@ -184,38 +186,27 @@ def _count_matches(points, low, high, bounds, children, starts, stops, tolerance
 
 
 @njit(cache=True)
-def _count(points, low, high, bounds, children, starts, stops, tolerance):
-    """Count one embedding dimension using the shared strict-bound traversal."""
-    return _count_matches(points, low, high, bounds, children, starts, stops, tolerance, points.shape[1])[0]
-
-
-@njit(cache=True)
-def _tree_count_typed(x, dimension, n, tolerance, index_dtype, delay=1, extra=False):
+def _tree_count_typed(x, dimension, n, tolerance, index_dtype, delay=1):
     """Keep each tree's lifetime inside one call, independent of index width."""
-    ordered, low, high, bounds, children, starts, stops = _build(x, dimension, n, 8, index_dtype, delay, extra)
+    ordered, low, high, bounds, children, starts, stops = _build(x, dimension, n, index_dtype, delay, True)
     return _count_matches(ordered, low, high, bounds, children, starts, stops, tolerance, dimension)
 
 
 @njit(cache=True)
-def _tree_match_count(x, dimension, n, tolerance, delay=1):
-    """Use compact indices without narrowing pair counts or excluding large inputs."""
-    if n <= 2147483647:
-        return _tree_count_typed(x, dimension, n, tolerance, numpy.int32, delay)[0]
-    return _tree_count_typed(x, dimension, n, tolerance, numpy.int64, delay)[0]
-
-
-@njit(cache=True)
 def _tree_match_counts(x, dimension, n, tolerance, delay=1):
-    """Build one tree for the common templates and count both embedding lengths."""
+    """Build one tree for the common templates and count both embedding lengths.
+
+    Compact indices narrow neither the pair counts nor the accepted input length.
+    """
     if n <= 2147483647:
-        return _tree_count_typed(x, dimension, n, tolerance, numpy.int32, delay, True)
-    return _tree_count_typed(x, dimension, n, tolerance, numpy.int64, delay, True)
+        return _tree_count_typed(x, dimension, n, tolerance, numpy.int32, delay)
+    return _tree_count_typed(x, dimension, n, tolerance, numpy.int64, delay)
 
 
 def _tree_workspace_bytes(n, dimension):
     """Bound the build's live array bytes, including permutation and reordered points."""
     leaves = 1
-    while leaves * 8 < n:
+    while leaves * _LEAF_SIZE < n:
         leaves *= 2
     index_bytes = 4 if n <= 2147483647 else 8
     return n * (8 * dimension + index_bytes) + (2 * leaves - 1) * (16 * dimension + 8 + 3 * index_bytes)

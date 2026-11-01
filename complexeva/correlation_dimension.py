@@ -8,7 +8,7 @@ from numpy.lib.stride_tricks import sliding_window_view
 from numpy.typing import ArrayLike, NDArray
 from scipy.spatial import KDTree
 
-from ._validation import as_finite_1d, as_signals, check_positive_int, float64_rows
+from ._validation import MAX_SAFE_AMPLITUDE, MIN_SAFE_AMPLITUDE, as_finite_1d, as_signals, check_positive_int, float64_rows
 
 # nolds' geometric grid: 0.1 * sample SD, multiplied by 1.03, up to 0.5 * SD.
 _RADIUS_FACTORS = 0.1 * 1.03 ** numpy.arange(55)
@@ -69,7 +69,7 @@ def _correlation_dimension_row(x, order, delay, radii):
     # Only extreme magnitudes need rescaling to protect squared distances
     # and SD; ordinary inputs retain their exact floating-point boundaries.
     magnitude = max(abs(lower), abs(upper))
-    scale = magnitude if magnitude < 1e-100 or magnitude > 1e100 else 1.0
+    scale = magnitude if magnitude < MIN_SAFE_AMPLITUDE or magnitude > MAX_SAFE_AMPLITUDE else 1.0
     scaled = x if scale == 1.0 else x / scale
     if radii is None:
         row_radii = numpy.std(scaled, ddof=1) * _RADIUS_FACTORS
