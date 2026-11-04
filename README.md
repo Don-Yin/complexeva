@@ -1,8 +1,12 @@
 # complexeva
 
-<img src="docs/figures/logo/banner.png" width="320" alt="complexeva logo">
+<img src="docs/figures/logo/banner.png" width="100%" alt="complexeva logo">
 
 Fast, low-memory complexity measures for 1D time series (EEG, MEG, physiology).
+
+https://github.com/user-attachments/assets/c6b7dfb1-4f76-4fd8-a897-fc88a611e444
+
+Also [on YouTube](https://youtu.be/WqjcmEK60rQ), with chapters. Video credits: Shannon photograph by Konrad Jacobs, Oberwolfach (CC BY-SA 2.0 de); Wiktionary screenshots (CC BY-SA 4.0); heartbeat from PhysioNet nsr2db and EEG from PhysioNet EEGMMIDB (Schalk, 2009, [doi:10.13026/C28G6P](https://doi.org/10.13026/C28G6P)), both ODC-By 1.0. Full references are in the video description.
 
 ```bash
 pip install complexeva  # Python 3.14+
