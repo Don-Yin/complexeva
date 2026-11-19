@@ -13,7 +13,7 @@ _MIN_GRAM_EIGENVALUE_RATIO = 1e-4
 
 @njit(cache=True)
 def _singular_values_qr(values, rows, columns, row_stride, column_stride, scale):
-    """Reduce delay rows with Givens rotations, retaining only a small square factor."""
+    """Singular values of the delay matrix, by Givens QR."""
     factor = numpy.zeros((columns, columns))
     row = numpy.empty(columns)
     for start in range(rows):
@@ -35,7 +35,7 @@ def _singular_values_qr(values, rows, columns, row_stride, column_stride, scale)
 
 @njit(cache=True)
 def _svd_entropy_row(values, order, delay, divisor):
-    """Compute one row without allocating its delay embedding."""
+    """SVD entropy of one row."""
     count = len(values) - (order - 1) * delay
     maximum = 0.0
     constant = True
@@ -112,7 +112,7 @@ def _svd_entropy_row(values, order, delay, divisor):
 
 @njit(cache=True)
 def _svd_entropy_rows(values, direct, order, delay, divisor):
-    """Share the scalar kernel and one conversion buffer across all batch rows."""
+    """SVD entropy for every batch row."""
     n = values.shape[-1]
     count = values.size // n
     out = numpy.empty(count)

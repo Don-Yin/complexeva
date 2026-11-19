@@ -20,7 +20,7 @@ def _hann(length):
 
 @njit(cache=True)
 def _prepare_spectrum(row, work, window, step):
-    """Centre each segment into one reusable packed-real FFT buffer."""
+    """Centre segments into the FFT buffer; False if constant."""
     low = high = numpy.float64(row[0])
     for j in range(1, len(row)):
         value = numpy.float64(row[j])
@@ -49,7 +49,7 @@ def _prepare_spectrum(row, work, window, step):
 
 @njit(cache=True)
 def _spectrum_entropy(packed, divisor):
-    """Accumulate one-sided power in the consumed part of the FFT buffer, then Shannon entropy."""
+    """Shannon entropy of the one-sided power spectrum."""
     segments, length = packed.shape
     bins = length // 2 + 1
     total = 0.0
@@ -79,7 +79,7 @@ def _spectrum_entropy(packed, divisor):
 
 
 def _row_entropy(row, work, window, step, divisor):
-    """Use the identical preparation, in-place FFT and reduction for scalars and batch rows."""
+    """Spectral entropy of one row."""
     if not _prepare_spectrum(row, work, window, step):
         return float("nan")
     spectrum = rfft(work, axis=-1, overwrite_x=True)

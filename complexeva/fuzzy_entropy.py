@@ -12,7 +12,7 @@ _BATCH_COORDINATE_BUDGET = 60  # Bound concurrent template storage to 60 * N flo
 
 @njit(cache=True)
 def _templates(x, order):
-    """Centre each template separately, using the same extendible starts at both lengths."""
+    """Mean-centred templates of length m and m + 1."""
     count = len(x) - order
     short = numpy.empty((count, order))
     long = numpy.empty((count, order + 1))
@@ -31,7 +31,7 @@ def _templates(x, order):
 
 @njit(cache=True, inline="always")
 def _membership(distance, r, exponent):
-    """Keep the divisor outside the power, including the common square case."""
+    """Fuzzy membership exp(-d**n / r)."""
     if exponent == 2.0:
         power = distance * distance
     elif exponent == 1.0:
@@ -43,7 +43,7 @@ def _membership(distance, r, exponent):
 
 @njit(cache=True)
 def _anchor_sums(short, long, i, r, exponent):
-    """Accumulate one upper-triangle row without a distance or membership matrix."""
+    """Membership sums of one template against all later ones."""
     b, a = 0.0, 0.0
     order = short.shape[1]
     for j in range(i + 1, len(short)):
@@ -59,7 +59,7 @@ def _anchor_sums(short, long, i, r, exponent):
 
 @njit(cache=True, inline="always")
 def _finish(b, a):
-    """Take the log ratio after cancelling the identical pair-count denominators."""
+    """FuzzyEn from the two membership sums."""
     if b == 0.0:
         return numpy.nan
     if a == 0.0:
@@ -69,7 +69,7 @@ def _finish(b, a):
 
 @njit(cache=True)
 def _entropy_serial(x, order, r, exponent):
-    """Use the same anchor grouping as the parallel single-signal kernel."""
+    """FuzzyEn of one signal, serially."""
     if r == 0.0:
         return numpy.nan
     short, long = _templates(x, order)
@@ -83,7 +83,7 @@ def _entropy_serial(x, order, r, exponent):
 
 @njit(cache=True, parallel=True)
 def _entropy_parallel(x, order, r, exponent):
-    """Parallelize anchor rows, then reduce in fixed order for reproducible bits."""
+    """FuzzyEn of one signal in parallel, summed in fixed order."""
     if r == 0.0:
         return numpy.nan
     short, long = _templates(x, order)
@@ -103,7 +103,7 @@ def _entropy_parallel(x, order, r, exponent):
 
 @njit(cache=True, parallel=True)
 def _entropy_rows(values, direct, order, radii, exponent, chunks):
-    """Read batch views in place, or convert one row per worker, never the whole batch."""
+    """FuzzyEn for every batch row."""
     n = values.shape[-1]
     out = numpy.empty(len(radii))
     buffers = numpy.empty((chunks if direct is None else 0, n))
@@ -161,7 +161,7 @@ def fuzzy_entropy(
         Computation is exact pair enumeration, O(N**2 * order) time and O(N * order) heap
         per active worker. Long single signals parallelize anchor rows. Batches parallelize
         signals when enough rows are available, otherwise reuse the anchor-parallel kernel
-        for long rows (exp_033). All schedules use deterministic reductions and no fastmath.
+        for long rows. All schedules use deterministic reductions and no fastmath.
         NUMBA_NUM_THREADS bounds
         the worker count. Batch template and conversion buffers share a 60-coordinate
         budget (12 default-order workers for direct float64 rows, and at least one worker

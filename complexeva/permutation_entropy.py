@@ -10,7 +10,7 @@ _MAX_HISTOGRAM_ORDER = 7  # Bound the histogram to 7! int64 bins (40,320 bytes).
 
 
 def _make_permutation_counter(order):
-    """Specialize one stable Lehmer-counting loop for a fixed small order."""
+    """Make a pattern counter for one small order."""
     size = factorial(order)
 
     @njit(cache=True)
@@ -34,7 +34,7 @@ def _make_permutation_counter(order):
 
 @njit(cache=True)
 def _entropy_from_counts(counts, divisor):
-    """Use identical non-reassociated arithmetic for a signal and each batch row."""
+    """Permutation entropy from pattern counts."""
     total = counts.sum()
     entropy = 0.0
     for count in counts:
@@ -45,7 +45,7 @@ def _entropy_from_counts(counts, divisor):
 
 
 def _make_permutation_rows(counter):
-    """Read direct float64 rows, or reuse one conversion buffer without parallel-runtime overhead."""
+    """Make a batch loop for one pattern counter."""
 
     @njit(cache=True)
     def rows(values, direct, delay, divisor):
@@ -72,7 +72,7 @@ _PERMUTATION_ROWS = {order: _make_permutation_rows(counter) for order, counter i
 
 
 def _large_order_entropy(values, order, delay, divisor):
-    """Count arbitrary-order patterns without a bounded integer encoding."""
+    """Permutation entropy for large orders."""
     window = (order - 1) * delay + 1
     embedded = numpy.lib.stride_tricks.sliding_window_view(values, window)[:, ::delay]
     patterns = numpy.argsort(embedded, axis=1, kind="stable")

@@ -9,7 +9,7 @@ _MOMENT_BLOCK = 64  # Anchor short blocks to bound moment cancellation without p
 
 @njit(cache=True, inline="always")
 def _merge_moments(count, mean, square, block_count, anchor, block_sum, block_square):
-    """Merge an anchored block's moments with the accumulated centered sum of squares."""
+    """Merge one block's moments into the running totals."""
     fraction = block_count / (count + block_count)
     delta = anchor + block_sum / block_count - mean
     square += block_square - block_sum * block_sum / block_count + delta * delta * count * fraction
@@ -18,7 +18,7 @@ def _merge_moments(count, mean, square, block_count, anchor, block_sum, block_sq
 
 @njit(cache=True)
 def _hjorth_row(values):
-    """Accumulate all three population variances in one pass without derivative arrays."""
+    """Hjorth parameters of one row, in one pass."""
     n = len(values)
     origin = values[0]
     difference_origin = values[1] - origin
@@ -81,7 +81,7 @@ def _hjorth_row(values):
 
 @njit(cache=True)
 def _hjorth_rows(values, direct):
-    """Evaluate rows serially, reusing one float64 conversion buffer only when needed."""
+    """Hjorth parameters for every batch row."""
     n = values.shape[-1]
     count = values.size // n
     mobility = numpy.empty(count)

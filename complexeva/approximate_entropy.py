@@ -10,7 +10,7 @@ from ._validation import as_signals, check_finite_real, check_positive_int, floa
 
 @njit(cache=True)
 def _phi(counts, n):
-    """Average log probabilities with compensated summation, independent of row scheduling."""
+    """Mean log match fraction, with compensated summation."""
     total, correction = 0.0, 0.0
     for i in range(n):
         term = numpy.log(counts[i] / n) - correction
@@ -22,7 +22,7 @@ def _phi(counts, n):
 
 @njit(cache=True)
 def _diagonal_entropy(x, order, r):
-    """Update both sets of template counts in one allocation-free comparison scan."""
+    """ApEn by scanning diagonals, without arrays."""
     n = len(x)
     nm, nm1 = n - order + 1, n - order
     counts = numpy.ones((2, nm), dtype=numpy.int64)
@@ -43,7 +43,7 @@ def _diagonal_entropy(x, order, r):
 
 @njit(cache=True)
 def _tree_phi(x, dimension, r):
-    """Count individual inclusive neighbourhoods with lazy, exact dual-tree updates."""
+    """phi from exact dual-tree neighbour counts."""
     n = len(x) - dimension + 1
     points, low, high, bounds, children, starts, stops = _build(x, dimension, n)
     counts = numpy.zeros(n, dtype=numpy.int64)
@@ -113,7 +113,7 @@ def _tree_phi(x, dimension, r):
 
 @njit(cache=True)
 def _entropy(x, order, r):
-    """Choose by embedding size only, using the same mathematical definition."""
+    """ApEn of one row; tree or diagonal scan by size."""
     if len(x) - order < _TREE_MIN_TEMPLATES or len(x) - order >= 2147483647 or order > _TREE_MAX_ORDER:
         return _diagonal_entropy(x, order, r)
     return _tree_phi(x, order, r) - _tree_phi(x, order + 1, r)
@@ -121,7 +121,7 @@ def _entropy(x, order, r):
 
 @njit(cache=True)
 def _entropy_rows(values, direct, order, radii):
-    """Reuse one row workspace; serial execution keeps heap below reference row loops."""
+    """ApEn for every batch row, one at a time."""
     n = values.shape[-1]
     out = numpy.empty(len(radii))
     buffer = numpy.empty(n) if direct is None else None
@@ -138,7 +138,7 @@ def _entropy_rows(values, direct, order, radii):
 
 
 def _batch_radii(values: NDArray) -> NDArray[numpy.float64]:
-    """Reduce contiguous float64 rows exactly as 1D."""
+    """Default r for every row, as in 1D."""
     return numpy.fromiter((0.2 * numpy.std(row, ddof=0) for row in float64_rows(values)), numpy.float64)
 
 

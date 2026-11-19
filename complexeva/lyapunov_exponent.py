@@ -7,7 +7,7 @@ from ._validation import as_finite_1d, check_finite_real, check_positive_int
 
 @njit(cache=True)
 def _nearest_neighbours(Y: NDArray[numpy.float64], min_tsep: int, n_traj: int) -> NDArray[numpy.int64]:
-    """Find the exact nearest neighbour of each of the first n_traj vectors outside the Theiler window.
+    """Nearest neighbour of each vector outside the Theiler window.
 
     Vectors are sorted by their first coordinate and scanned outward from each query. Consecutive sorted
     ranks form blocks of about sqrt(n_traj); a block is skipped whole when all its time indices lie inside

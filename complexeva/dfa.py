@@ -12,7 +12,7 @@ _SPLIT = 134217729.0  # 2**27 + 1: Veltkamp constant that splits a float64 into 
 
 @njit(cache=True)  # must stay non-recursive: Numba cannot reload a cached function that calls itself
 def _fluctuations(values: NDArray, scales: NDArray[numpy.int64], offset: int = 0, n: int = 0) -> NDArray[numpy.float64]:
-    """Stream the profile twice per window, retaining only O(scales) working storage (exp_029).
+    """F(n) for each window size n.
 
     Replay the same cumulative additions in the fit and residual passes to preserve every profile bit.
     Anchored fits, split slope products and compensated squares avoid catastrophic cancellation.
@@ -77,7 +77,7 @@ def _dfa_core(
     offset: int = 0,
     n: int = 0,
 ) -> float:
-    """One signal's streamed profile, stable residuals and centred two-pass slope."""
+    """DFA exponent of one signal."""
     fluctuations = _fluctuations(values, scales, offset, n)
     count = 0
     mean_x = 0.0
@@ -110,7 +110,7 @@ def _dfa_rows(
     chunks: int,
     flat_rows: bool,
 ):
-    """Read row views or flat logical offsets in place; never allocate a worker's row buffer."""
+    """DFA exponent for every batch row, read in place."""
     n = values.shape[-1]
     rows = values.size // n
     out = numpy.empty(rows)

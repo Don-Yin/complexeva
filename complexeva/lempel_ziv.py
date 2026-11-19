@@ -36,7 +36,7 @@ def _match_length(words, left, right, limit):
 
 @njit(cache=True)
 def _count_packed(words, n):
-    """Count exact LZ76 phrases with 2N-byte links and N/8 packed symbols.
+    """Count LZ76 phrases in packed bits.
 
     A compact occurrence index replaces the 32N-byte suffix automaton. Comparisons
     skip whole words and reject candidates at the current best match length, but
@@ -110,7 +110,7 @@ def _count_packed(words, n):
 
 @njit(cache=True)
 def _count_components(binary_array: NDArray[numpy.bool_]) -> int:
-    """Pack Boolean symbols, then count exact Kaspar-Schuster components, including an unfinished final copy."""
+    """Count LZ components of a Boolean array."""
     n = len(binary_array)
     words = numpy.zeros((n + 63) // 64 + 1, dtype=numpy.uint64)
     for position in range(n):
@@ -149,7 +149,7 @@ def _binarize(vector: NDArray[numpy.float64], method: str) -> NDArray[numpy.bool
 
 @njit(cache=True)
 def _lz_chunk(values, thresholds, method, begin, end):
-    """Read arbitrary layouts directly into packed bits; overwrite thresholds with counts."""
+    """LZ counts for rows begin to end, written over thresholds."""
     n = values.shape[-1]
     counts = thresholds.view(numpy.int64)
     size = max(0, n - 1) if method == 2 else n
@@ -166,7 +166,7 @@ def _lz_chunk(values, thresholds, method, begin, end):
 
 @njit(cache=True, parallel=True)
 def _lz_rows(values, thresholds, method, chunks):
-    """Parallelize only when the one-row scratch budget admits several indices."""
+    """LZ counts for all rows, chunks in parallel."""
     rows = len(thresholds)
     for chunk in prange(chunks):
         _lz_chunk(values, thresholds, method, rows * chunk // chunks, rows * (chunk + 1) // chunks)
@@ -174,7 +174,7 @@ def _lz_rows(values, thresholds, method, chunks):
 
 @njit(cache=True)
 def _row_median(values, offset, n):
-    """Select the exact finite-row median in one scratch copy, without a partition copy."""
+    """Exact median of one row."""
     row = numpy.empty(n, dtype=numpy.float64)
     for j in range(n):
         row[j] = values.flat[offset + j]
@@ -208,14 +208,14 @@ def _row_median(values, offset, n):
 
 @njit(cache=True)
 def _median_thresholds(values, out):
-    """Reuse the exact selection workspace sequentially across rows."""
+    """Each row's exact median, into out."""
     n = values.shape[-1]
     for row in range(len(out)):
         out[row] = _row_median(values, row * n, n)
 
 
 def _batch_lz(values: NDArray, method: str, normalize: bool) -> NDArray[numpy.int64] | NDArray[numpy.float64]:
-    """Use one median scratch row and bound parallel indices by that same 8N budget."""
+    """Lempel-Ziv count for every row of a batch."""
     if method not in ("median", "mean", "diff"):
         raise ValueError(f"method must be 'mean', 'median', or 'diff', got {method!r}")
     n = values.shape[-1]

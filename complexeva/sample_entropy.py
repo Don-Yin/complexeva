@@ -8,7 +8,7 @@ from ._validation import as_signals, check_finite_real, check_positive_int, defa
 
 @njit(cache=True)
 def _diagonal_match_counts(x: NDArray[numpy.float64], order: int, tolerance: float) -> tuple[int, int]:
-    """Count matching windows along offset diagonals without working arrays."""
+    """Match counts by scanning offset diagonals."""
     count_m, count_m1 = 0, 0
     for offset in range(1, len(x) - order):
         run = 0
@@ -22,7 +22,7 @@ def _diagonal_match_counts(x: NDArray[numpy.float64], order: int, tolerance: flo
 
 @njit(cache=True)
 def _match_counts(x: NDArray[numpy.float64], order: int, tolerance: float) -> tuple[int, int]:
-    """Use bounded-memory spatial counting only for long, low-order inputs."""
+    """Match counts at m and m + 1; tree for long inputs."""
     n_templates = len(x) - order
     if n_templates < _TREE_MIN_TEMPLATES or order > _TREE_MAX_ORDER:
         return _diagonal_match_counts(x, order, tolerance)
@@ -39,7 +39,7 @@ def _match_counts_rows(
     count_dtype,
     copy_rows: bool,
 ):
-    """Use direct float64 rows when possible; otherwise reuse one buffer per worker (exp_024)."""
+    """Match counts for every row, in parallel."""
     n = values.shape[-1]
     rows = len(tolerances)
     counts = numpy.zeros((rows, 2), dtype=count_dtype)
@@ -59,12 +59,12 @@ def _match_counts_rows(
 
 
 def _batch_tolerances(values: NDArray) -> NDArray[numpy.float64]:
-    """Reduce contiguous float64 rows exactly as 1D."""
+    """Default r for every row, as in 1D."""
     return numpy.fromiter((default_radius(row, 0.2) for row in float64_rows(values)), numpy.float64)
 
 
 def _entropy_from_counts(count_m: int, count_m1: int) -> float:
-    """Keep the same scalar NumPy logarithm for a single signal and every batch row."""
+    """SampEn from the two match counts."""
     if count_m == 0:
         return float("nan")
     if count_m1 == 0:

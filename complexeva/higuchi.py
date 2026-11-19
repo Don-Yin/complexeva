@@ -8,7 +8,7 @@ from ._validation import as_signals, check_positive_int, unit_stride_rows
 
 @njit(cache=True, fastmath={"reassoc"})
 def _curve_length(x: NDArray[numpy.float64], m: int, k: int, n_max: int) -> float:
-    """Sum nonnegative increments with reassociation, but without unsafe fast-math flags."""
+    """Higuchi curve length for offset m and step k."""
     total = 0.0
     for i in range(1, n_max + 1):
         total += numpy.abs(x[m + i * k] - x[m + (i - 1) * k])
@@ -17,7 +17,7 @@ def _curve_length(x: NDArray[numpy.float64], m: int, k: int, n_max: int) -> floa
 
 @njit(cache=True)
 def _hfd_core(x: NDArray[numpy.float64], k_max: int, lengths: NDArray[numpy.float64] | None = None) -> float:
-    """Compute the same centered regression with one reusable length array."""
+    """HFD of one signal."""
     N = len(x)
     L = numpy.empty(k_max) if lengths is None else lengths
     sum_x = 0.0
@@ -46,7 +46,7 @@ def _hfd_core(x: NDArray[numpy.float64], k_max: int, lengths: NDArray[numpy.floa
 
 @njit(cache=True)
 def _hfd_rows(x: NDArray, direct: NDArray[numpy.float64] | None, k_max: int):
-    """Read contiguous rows in place, or reuse one float64 conversion buffer."""
+    """HFD for every batch row."""
     n = x.shape[-1]
     rows = x.size // n
     out = numpy.empty(rows)

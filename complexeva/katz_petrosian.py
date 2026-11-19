@@ -9,7 +9,7 @@ from ._validation import as_signals
 
 @njit(cache=True, error_model="numpy")
 def _katz_core(values, start, n):
-    """Accumulate planar path length and first-point diameter in one ordered pass."""
+    """Katz FD of one signal, in one pass."""
     first = numpy.float64(values.flat[start])
     previous = first
     # Four independent sums remove the scalar dependency bottleneck without fastmath or work arrays.
@@ -58,7 +58,7 @@ def _katz_core(values, start, n):
 
 @njit(cache=True)
 def _petrosian_core(values, start, n):
-    """Count derivative sign-bit changes without materializing the derivative or symbols."""
+    """Petrosian FD from sign changes of the derivative."""
     changes = 0
     # Adjacent triples remove a loop-carried sign dependency, enabling an exact integer SIMD reduction.
     for j in range(2, n):
@@ -71,7 +71,7 @@ def _petrosian_core(values, start, n):
 
 
 def _make_fd_rows(core):
-    """Specialize a serial batch loop that reads every supported dtype and layout in place."""
+    """Make a batch loop for one FD core."""
 
     @njit(cache=True)
     def rows(values):
@@ -90,7 +90,7 @@ _PETROSIAN_ROWS = _make_fd_rows(_petrosian_core)
 
 
 def _evaluate_fd(x, core, rows):
-    """Validate once and use the same arithmetic for a single signal and each batch row."""
+    """Run an FD core on one signal or a batch."""
     values = as_signals(x)
     n = values.shape[-1]
     if n < 2:

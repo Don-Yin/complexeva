@@ -13,7 +13,7 @@ _TREE_BATCH_BYTES = 12 * 1024 * 1024  # Bound concurrent row trees, not the proc
 
 @njit(cache=True)
 def _partition(x, permutation, start, stop, axis, target, delay):
-    """Partition an index range around its median without copying vectors."""
+    """Partition indices around the median on one axis."""
     low, high = start, stop - 1
     while low < high:
         pivot = x[permutation[(low + high) // 2] + axis * delay]
@@ -37,7 +37,7 @@ def _partition(x, permutation, start, stop, axis, target, delay):
 
 @njit(cache=True)
 def _build(x, dimension, n, index_dtype=numpy.int32, delay=1, extra=False):
-    """Split on dimension coordinates, optionally retaining one extension coordinate."""
+    """Build the k-d tree over the templates."""
     leaves = 1
     while leaves * _LEAF_SIZE < n:
         leaves *= 2
@@ -82,7 +82,7 @@ def _build(x, dimension, n, index_dtype=numpy.int32, delay=1, extra=False):
 
 @njit(cache=True)
 def _sorted_extension_count(points, first_a, stop_a, first_b, stop_b, same, tolerance, dimension):
-    """Count a dense one-coordinate block with sorted, strict sliding windows."""
+    """Count extension matches in a dense block by sorting."""
     a = numpy.sort(points[first_a:stop_a, dimension])
     b = a if same else numpy.sort(points[first_b:stop_b, dimension])
     left, right, count = 0, 0, 0
@@ -100,7 +100,7 @@ def _sorted_extension_count(points, first_a, stop_a, first_b, stop_b, same, tole
 
 @njit(cache=True)
 def _extension_count(points, first_a, stop_a, first_b, stop_b, same, tolerance, dimension):
-    """Scan only the extension coordinate after the base box is wholly matched."""
+    """Count pairs that also match on the extension coordinate."""
     low_a = high_a = points[first_a, dimension]
     for i in range(first_a + 1, stop_a):
         low_a = min(low_a, points[i, dimension])
@@ -129,7 +129,7 @@ def _extension_count(points, first_a, stop_a, first_b, stop_b, same, tolerance, 
 
 @njit(cache=True)
 def _count_matches(points, low, high, bounds, children, starts, stops, tolerance, dimension):
-    """Count base matches and their extension subset in one unordered pair traversal."""
+    """Count matches at m and m + 1 by walking node pairs."""
     # A depth-first pair traversal uses O(tree depth), not O(node count), slots.
     depth, nodes = 1, len(starts)
     while nodes > 1:
@@ -187,14 +187,14 @@ def _count_matches(points, low, high, bounds, children, starts, stops, tolerance
 
 @njit(cache=True)
 def _tree_count_typed(x, dimension, n, tolerance, index_dtype, delay=1):
-    """Keep each tree's lifetime inside one call, independent of index width."""
+    """Build the tree and count matches."""
     ordered, low, high, bounds, children, starts, stops = _build(x, dimension, n, index_dtype, delay, True)
     return _count_matches(ordered, low, high, bounds, children, starts, stops, tolerance, dimension)
 
 
 @njit(cache=True)
 def _tree_match_counts(x, dimension, n, tolerance, delay=1):
-    """Build one tree for the common templates and count both embedding lengths.
+    """Match counts at m and m + 1 from one tree.
 
     Compact indices narrow neither the pair counts nor the accepted input length.
     """
@@ -204,7 +204,7 @@ def _tree_match_counts(x, dimension, n, tolerance, delay=1):
 
 
 def _tree_workspace_bytes(n, dimension):
-    """Bound the build's live array bytes, including permutation and reordered points."""
+    """Upper bound on the tree build's memory, in bytes."""
     leaves = 1
     while leaves * _LEAF_SIZE < n:
         leaves *= 2

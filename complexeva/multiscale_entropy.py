@@ -17,7 +17,7 @@ from .sample_entropy import _match_counts
 
 @njit(cache=True)
 def _offset_counts(x, order, delay, tolerance, first, stop):
-    """Count delayed templates at the requested start-index separations, without arrays."""
+    """Match counts at the given start separations."""
     n = len(x) - order * delay
     count_m = count_m1 = 0
     for offset in range(first, stop):
@@ -35,7 +35,7 @@ def _offset_counts(x, order, delay, tolerance, first, stop):
 
 @njit(cache=True)
 def _modified_counts(x, order, scale, tolerance):
-    """Use the SampEn tree, removing pairs closer than one scale as in Wu's Appendix."""
+    """Modified MSE match counts (Wu 2013)."""
     n = len(x) - order * scale
     if n < _TREE_MIN_TEMPLATES or order > _TREE_MAX_ORDER:
         return _offset_counts(x, order, scale, tolerance, scale, n)
@@ -46,7 +46,7 @@ def _modified_counts(x, order, scale, tolerance):
 
 @njit(cache=True)
 def _multiscale_chunk(values, direct, scales, order, tolerances, modified, first, stop, out):
-    """Reuse one coarse-graining buffer for a serial call or one parallel row chunk."""
+    """MSE for rows first to stop."""
     n = values.shape[-1]
     rows = values.size // n
     if out is None:
@@ -90,7 +90,7 @@ def _multiscale_chunk(values, direct, scales, order, tolerances, modified, first
 
 @njit(cache=True, parallel=True)
 def _multiscale_rows(values, direct, scales, order, tolerances, modified, chunks):
-    """Each active chunk owns one coarse buffer; the serial kernel allocates it once."""
+    """MSE for every batch row, chunks in parallel."""
     rows = len(tolerances)
     out = numpy.empty((rows, len(scales)))
     for chunk in prange(chunks):

@@ -16,7 +16,7 @@ _RADIUS_FACTORS = 0.1 * 1.03 ** numpy.arange(55)
 
 @njit(cache=True)
 def _strict_pair_counts(embedded, radii):
-    """Resolve radii near a pair distance with an explicit strict Euclidean test."""
+    """Count pairs strictly closer than each radius."""
     histogram = numpy.zeros(len(radii) + 1, dtype=numpy.int64)
     for i in range(len(embedded)):
         for j in range(i + 1, len(embedded)):
@@ -37,7 +37,7 @@ def _strict_pair_counts(embedded, radii):
 
 
 def _correlation_counts(embedded, radii):
-    """Count distinct pairs; resolve floating-point boundary bins by strict tests."""
+    """Count pairs closer than each radius."""
     tree = KDTree(embedded, leafsize=16)
     # A preceding radius alone is insufficient: squaring sqrt(3)'s predecessor
     # can exclude a pair even when its rounded Euclidean norm is below r.
@@ -62,7 +62,7 @@ def _correlation_counts(embedded, radii):
 
 
 def _correlation_dimension_row(x, order, delay, radii):
-    """Use one identical row calculation for scalar calls and every batch layout."""
+    """Correlation dimension of one row."""
     lower, upper = float(numpy.min(x)), float(numpy.max(x))
     if lower == upper:
         return numpy.nan

@@ -13,7 +13,7 @@ MAX_SAFE_AMPLITUDE = 1e100
 
 @njit(cache=True)
 def _first_nonfinite(rows: NDArray) -> int:
-    """Locate the first invalid sample of 2D rows in logical order, in any strides, without a boolean mask."""
+    """Flat index of the first non-finite sample, or -1."""
     n = rows.shape[1]
     for i in range(rows.shape[0]):
         row = rows[i]
@@ -25,7 +25,7 @@ def _first_nonfinite(rows: NDArray) -> int:
 
 @njit(cache=True)
 def _is_constant(row: NDArray) -> bool:
-    """Recognize exact constants before rounded means can give them a nonzero std."""
+    """True if every sample equals the first."""
     for j in range(1, len(row)):
         if row[j] != row[0]:
             return False
