@@ -12,9 +12,11 @@ from .multiscale_entropy import multiscale_entropy
 from .permutation_entropy import permutation_entropy
 from .sample_entropy import sample_entropy
 from .spectral_entropy import spectral_entropy
+from .surrogates import SurrogateTestResult, iaaft_surrogates, phase_randomized_surrogates, surrogate_test
 from .svd_entropy import svd_entropy
 
 __all__ = [
+    "SurrogateTestResult",
     "approximate_entropy",
     "compression_complexity",
     "correlation_dimension",
@@ -23,6 +25,7 @@ __all__ = [
     "hfd",
     "hfd_hilbert",
     "hjorth",
+    "iaaft_surrogates",
     "katz_fd",
     "lempel_ziv",
     "lempel_ziv_hilbert",
@@ -30,7 +33,9 @@ __all__ = [
     "multiscale_entropy",
     "permutation_entropy",
     "petrosian_fd",
+    "phase_randomized_surrogates",
     "sample_entropy",
     "spectral_entropy",
+    "surrogate_test",
     "svd_entropy",
 ]

@@ -40,6 +40,31 @@ complexeva.permutation_entropy(windows)         # one value per window
 
 Batches work for every measure except `lyapunov_exponent`, `compression_complexity`, the `_hilbert` variants and binary-string `lempel_ziv`, which take one signal. `multiscale_entropy` adds a last axis of scales, and `hjorth` returns a (mobility, complexity) pair of arrays. A non-finite sample raises an error naming its full index; a constant signal gives NaN in its place. `NUMBA_NUM_THREADS` limits the threads.
 
+## surrogate tests
+
+```python
+result = complexeva.surrogate_test(complexeva.hfd, signal, n=99, seed=0)
+print(result.observed, result.surrogate_mean, result.delta, result.pvalue)
+```
+
+## optional GPU backend
+
+```bash
+pip install 'complexeva[gpu]'
+```
+
+```python
+from complexeva import gpu
+
+gpu.hfd(eeg)  # one Higuchi fractal dimension per signal
+gpu.spectrum_shuffle_test(eeg, n_shuffles=39, seed=0)  # PyTorch surrogates, CPU entropy
+```
+
+| Read more | Topics |
+| --- | --- |
+| [CPU surrogate tests](docs/surrogates.md) | Surrogate methods, options and p-values |
+| [GPU backend](docs/gpu.md) | Device selection, precision and shuffle test |
+
 ## measures
 
 | | measure | input | paper |

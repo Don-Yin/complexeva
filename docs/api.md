@@ -21,4 +21,7 @@
 .. autofunction:: hjorth
 .. autofunction:: lyapunov_exponent
 .. autofunction:: compression_complexity
+.. autofunction:: phase_randomized_surrogates
+.. autofunction:: iaaft_surrogates
+.. autofunction:: surrogate_test
 ```

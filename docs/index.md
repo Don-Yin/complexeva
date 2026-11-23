@@ -1,4 +1,5 @@
 ```{include} ../README.md
+:relative-docs: docs/
 :relative-images:
 ```
 
@@ -6,6 +7,8 @@
 :hidden:
 
 api
+surrogates
+gpu
 auto_examples/index
 references
 ```
