@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata in this file."
+title: complexeva
+authors:
+  - family-names: Yin
+    given-names: Don
+license: MIT
+version: 0.6.2
+date-released: 2026-11-01
+doi: 10.5281/zenodo.24503524
+repository-code: https://github.com/Don-Yin/complexeva
