@@ -38,7 +38,7 @@ windows = numpy.lib.stride_tricks.sliding_window_view(signal, 200)[::10]  # (win
 complexeva.permutation_entropy(windows)         # one value per window
 ```
 
-Batches work for every measure except `lyapunov_exponent`, `compression_complexity`, the `_hilbert` variants and binary-string `lempel_ziv`, which take one signal. `multiscale_entropy` adds a last axis of scales, and `hjorth` returns a (mobility, complexity) pair of arrays. A non-finite sample raises an error naming its full index; a constant signal gives NaN in its place. `NUMBA_NUM_THREADS` limits the threads.
+Some measures take one signal only; see [batches](docs/batches.md).
 
 ## surrogate tests
 
@@ -104,4 +104,4 @@ Batches, against a loop of the best other package (`NUMBA_NUM_THREADS` sets the 
 
 MIT
 
-Video credits: Shannon photograph by Konrad Jacobs, Oberwolfach (CC BY-SA 2.0 de); Wiktionary screenshots (CC BY-SA 4.0); heartbeat from PhysioNet nsr2db and EEG from PhysioNet EEGMMIDB (Schalk, 2009, [doi:10.13026/C28G6P](https://doi.org/10.13026/C28G6P)), both ODC-By 1.0. Full references are in the [video description](https://youtu.be/WqjcmEK60rQ).
+[Video credits](docs/credits.md) · [Experiments](https://github.com/Don-Yin/complexeva/blob/main/experiments/README.md)

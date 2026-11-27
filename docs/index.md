@@ -7,8 +7,10 @@
 :hidden:
 
 api
+batches
 surrogates
 gpu
 auto_examples/index
 references
+credits
 ```
