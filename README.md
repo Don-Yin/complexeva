@@ -104,4 +104,4 @@ Batches, against a loop of the best other package (`NUMBA_NUM_THREADS` sets the 
 
 MIT
 
-[Video credits](docs/credits.md) · [Experiments](https://github.com/Don-Yin/complexeva/blob/main/experiments/README.md)
+[Video credits](docs/credits.md)
